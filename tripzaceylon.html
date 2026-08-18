@@ -186,6 +186,15 @@ header.solid .menu{color:rgba(255,255,255,.94)}
   color:rgba(255,255,255,.82);letter-spacing:.01em;
   opacity:0;animation:fadeUp 1.1s ease 4.15s forwards;
 }
+.hero-cta{
+  display:flex;justify-content:center;margin-top:2.2rem;
+  opacity:0;animation:fadeUp 1.1s ease 4.4s forwards;
+}
+.hero-cta .btn{padding:1rem 2rem;font-size:.9rem}
+@media(max-width:700px){
+  .hero-cta{margin-top:1.7rem}
+  .hero-cta .btn{padding:.9rem 1.6rem;font-size:.82rem}
+}
 .hero-note strong{
   display:block;font-family:'Poppins',sans-serif;font-size:.62rem;letter-spacing:.26em;
   text-transform:uppercase;font-weight:500;color:var(--lime);margin-bottom:.5rem;
@@ -885,10 +894,6 @@ footer{background:#16241c;color:rgba(255,255,255,.72);font-size:.86rem}
       <a href="#food">Taste</a>
       <a href="#faq">FAQs</a>
     </nav>
-    <button class="btn" data-plan>
-      Plan Your Trip
-      <svg viewBox="0 0 24 24"><path d="M13 5l7 7-7 7v-5H4v-4h9V5Z"/></svg>
-    </button>
   </div>
 </header>
 
@@ -946,6 +951,12 @@ footer{background:#16241c;color:rgba(255,255,255,.72);font-size:.86rem}
     <div class="hero-copy">
       <h1>The whole island, <em>one journey</em></h1>
       <p class="tagline">Handcrafted travel across Sri Lanka</p>
+      <div class="hero-cta">
+        <button class="btn" data-plan>
+          Plan Your Trip
+          <svg viewBox="0 0 24 24"><path d="M13 5l7 7-7 7v-5H4v-4h9V5Z"/></svg>
+        </button>
+      </div>
     </div>
   </div>
 
