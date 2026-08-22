@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build Your Own Trip — TripzaCeylon</title>
+<meta name="description" content="Build your own Ceylon route: pick the places you want, add adventure activities, and see the total kilometres, driving time and suggested number of days.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Pacifico&family=Poppins:wght@300;400;500;600;700;800&family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --deep:#1a2c22;--ocean:#2f4b3a;--teal:#4f7457;--aqua:#8aa88b;--leaf:#5f855f;
+  --lime:#bfd3ae;--ink:#1e2a22;--muted:#6a7a6c;--line:rgba(47,75,58,.16);
+  --blue:#2f6fb5;--grad:linear-gradient(120deg,var(--ocean),var(--teal) 55%,var(--leaf));
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Poppins',sans-serif;color:var(--ink);background:#fcfdfa;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+img{display:block;max-width:100%}
+.wrap{width:min(1280px,94vw);margin:0 auto}
+
+header{background:var(--deep);padding:1rem 0;position:sticky;top:0;z-index:50}
+.nav{display:flex;align-items:center;gap:1.4rem}
+.logo{display:flex;align-items:center;gap:.6rem;font-family:'Pacifico',cursive;font-size:1.3rem;color:#fff;padding-top:.15rem}
+.logo .mark{width:32px;height:32px;border-radius:9px;background:var(--grad);display:grid;place-items:center}
+.logo .mark svg{width:18px;height:18px;fill:#fff}
+.back{
+  margin-left:auto;display:inline-flex;align-items:center;gap:.5rem;color:rgba(255,255,255,.8);
+  font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;font-weight:500;transition:.3s;
+}
+.back:hover{color:#fff}
+.back svg{width:14px;height:14px;fill:currentColor}
+.btn.navbtn{width:auto;padding:.6rem 1.2rem;font-size:.76rem;margin-left:1.2rem}
+@media(max-width:620px){
+  .back{font-size:.62rem}
+  .btn.navbtn{padding:.55rem .95rem;font-size:.68rem;margin-left:.7rem}
+}
+
+.intro{padding:3rem 0 1.6rem}
+.eyebrow{font-size:.66rem;letter-spacing:.26em;text-transform:uppercase;font-weight:600;color:var(--leaf)}
+h1{
+  font-family:'Poppins',sans-serif;font-weight:800;text-transform:uppercase;
+  font-size:clamp(1.9rem,4.2vw,3rem);line-height:1;letter-spacing:-.025em;margin:.9rem 0 .9rem;
+}
+h1 .lite{display:block;font-weight:300;font-size:.6em;letter-spacing:-.01em;margin-top:.15em}
+.intro p{font-weight:300;font-size:1rem;line-height:1.85;color:rgba(30,42,34,.7);max-width:34rem}
+
+.layout{display:grid;grid-template-columns:1.15fr .85fr;gap:2.6rem;align-items:start;padding-bottom:5rem}
+@media(max-width:980px){.layout{grid-template-columns:1fr;gap:1.8rem}}
+
+/* ---- map ---- */
+.mapbox{position:relative;background:#fff;border:1px solid var(--line);border-radius:18px;padding:1rem}
+.mapbox svg{width:100%;height:min(72vh,660px);display:block}
+.dist{fill:#e2ece0;stroke:#fff;stroke-width:14;stroke-linejoin:round;transition:fill .35s}
+.mapbox:hover .dist{fill:#dbe8d8}
+.pin{cursor:pointer}
+.pin .drop{fill:#1e4f52;transition:fill .25s,transform .25s;transform-origin:center bottom}
+.pin.adv .drop{fill:#d4af37;stroke:#a8842a;stroke-width:12}
+.pin .hole{fill:#fff}
+.pin:hover .drop{transform:scale(1.15)}
+.pin.on .drop{fill:#c8452f}
+.pin .lbl{
+  font-family:'Poppins',sans-serif;font-size:150px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.04em;fill:var(--ink);paint-order:stroke;stroke:#fff;stroke-width:34px;
+  stroke-linejoin:round;opacity:0;transition:opacity .25s;pointer-events:none;
+}
+.pin:hover .lbl,.pin.on .lbl{opacity:1}
+.pin .num{
+  font-family:'Poppins',sans-serif;font-size:120px;font-weight:800;fill:#fff;
+  text-anchor:middle;dominant-baseline:central;pointer-events:none;
+}
+#route{fill:none;stroke:#c8452f;stroke-width:26;stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:70 60;opacity:.85}
+.legend{display:flex;gap:1.3rem;justify-content:center;margin-top:.6rem;
+  font-size:.64rem;letter-spacing:.16em;text-transform:uppercase;color:rgba(30,42,34,.45);font-weight:500}
+.legend span{display:inline-flex;align-items:center;gap:.45rem}
+.legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.k-place{background:#1e4f52}.k-adv{background:#d4af37}.k-on{background:#c8452f}
+
+/* ---- panel ---- */
+.panel{background:#fff;border:1px solid var(--line);border-radius:18px;padding:1.7rem 1.6rem;position:sticky;top:5.4rem}
+@media(max-width:980px){.panel{position:static}}
+.panel h2{font-weight:700;text-transform:uppercase;font-size:.86rem;letter-spacing:.14em}
+.panel .hint{font-weight:300;font-size:.82rem;line-height:1.7;color:rgba(30,42,34,.6);margin:.5rem 0 1.2rem}
+#list{list-style:none;display:flex;flex-direction:column;gap:.5rem;margin-bottom:1.2rem}
+#list li{
+  display:flex;align-items:center;gap:.75rem;padding:.65rem .7rem;border-radius:11px;
+  background:#fafbf9;border:1px solid rgba(30,42,34,.1);
+}
+#list li .n{
+  width:24px;height:24px;border-radius:50%;background:var(--leaf);color:#fff;flex:0 0 auto;
+  display:grid;place-items:center;font-size:.68rem;font-weight:700;
+}
+#list li.adv .n{background:#d4af37;color:#1e2a22}
+#list li b{font-size:.82rem;font-weight:600;display:block}
+#list li small{font-size:.66rem;font-weight:300;color:rgba(30,42,34,.55)}
+#list li .leg{margin-left:auto;font-size:.66rem;font-weight:500;color:var(--teal);white-space:nowrap}
+#list li button{
+  background:none;border:0;cursor:pointer;padding:.2rem;line-height:0;opacity:.35;transition:.25s;flex:0 0 auto;
+}
+#list li button:hover{opacity:1}
+#list li button svg{width:13px;height:13px;fill:#c8452f}
+.empty{font-weight:300;font-size:.84rem;color:rgba(30,42,34,.45);padding:1.4rem 0;text-align:center;
+  border:1px dashed rgba(30,42,34,.18);border-radius:12px;margin-bottom:1.2rem}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-bottom:1.2rem}
+.stat{background:#f4f7f2;border-radius:12px;padding:.9rem 1rem}
+.stat b{display:block;font-size:1.4rem;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.stat span{display:block;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;
+  color:rgba(30,42,34,.5);font-weight:500;margin-top:.25rem}
+.daysrow{display:flex;align-items:center;gap:.9rem;margin-bottom:1.2rem}
+.daysrow label{font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;font-weight:600;color:rgba(30,42,34,.55)}
+.daysrow input{flex:1;accent-color:var(--leaf)}
+.daysrow output{font-weight:700;font-size:.9rem;min-width:3.6rem;text-align:right}
+.warn{
+  font-size:.74rem;font-weight:300;line-height:1.6;color:#8a4b2f;background:#fdf3ec;
+  border:1px solid #f0d9c8;border-radius:11px;padding:.75rem .9rem;margin-bottom:1.1rem;
+}
+.btn{
+  width:100%;display:inline-flex;align-items:center;justify-content:center;gap:.6rem;border:0;
+  cursor:pointer;padding:.95rem 1.4rem;border-radius:99px;font-family:inherit;font-size:.82rem;
+  font-weight:600;background:var(--grad);color:#fff;transition:.3s;
+}
+.btn:hover{transform:translateY(-2px)}
+.btn svg{width:15px;height:15px;fill:currentColor}
+.btn.ghost{background:none;border:1px solid var(--line);color:var(--ink);margin-top:.6rem}
+.btn.ghost:hover{background:#f4f7f2;transform:none}
+.note{font-size:.68rem;font-weight:300;color:rgba(30,42,34,.45);text-align:center;margin-top:.9rem;line-height:1.6}
+
+/* ---- plan drawer ---- */
+#plan{position:fixed;inset:0;z-index:1200;display:none}
+#plan.open{display:block}
+#plan .scrim{position:absolute;inset:0;background:rgba(22,36,28,.62);backdrop-filter:blur(3px);animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+#plan .panel-drawer{
+  position:absolute;top:0;right:0;bottom:0;width:min(460px,100%);background:#fff;
+  padding:2.4rem 2.2rem;overflow-y:auto;animation:slideIn .45s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes slideIn{from{transform:translateX(100%)}to{transform:none}}
+#plan h3{font-family:'Poppins',sans-serif;font-weight:800;text-transform:uppercase;
+  font-size:1.5rem;letter-spacing:-.02em;margin:.5rem 0 .4rem}
+#plan .dsub{font-size:.86rem;font-weight:300;color:var(--muted);margin-bottom:1.6rem;line-height:1.65}
+#plan label{display:block;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);margin:1rem 0 .4rem;font-weight:600}
+#plan input,#plan select,#plan textarea{
+  width:100%;border:1px solid var(--line);border-radius:12px;padding:.85rem 1rem;
+  font-family:inherit;font-size:.9rem;color:var(--ink);background:#f8faf5;
+}
+#plan input:focus,#plan select:focus,#plan textarea:focus{outline:0;border-color:var(--teal)}
+#plan textarea{min-height:92px;resize:vertical}
+#plan .close{
+  position:absolute;top:1.4rem;right:1.4rem;width:36px;height:36px;border-radius:50%;
+  border:1px solid var(--line);background:#fff;cursor:pointer;display:grid;place-items:center;
+}
+#plan .close svg{width:13px;height:13px;fill:var(--ink)}
+#plan .btn{margin-top:1.6rem}
+#plan .note{font-size:.72rem;font-weight:300;color:var(--muted);margin-top:.9rem;text-align:center}
+.attached{
+  margin-top:1.3rem;padding:.9rem 1rem;border-radius:12px;background:#f4f7f2;
+  border:1px solid rgba(47,75,58,.14);font-size:.78rem;font-weight:300;line-height:1.7;color:rgba(30,42,34,.75);
+}
+.attached b{display:block;font-size:.62rem;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--leaf);margin-bottom:.4rem}
+footer{background:#16241c;color:rgba(255,255,255,.5);font-size:.76rem;padding:1.6rem 0;text-align:center}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a href="tripzaceylon.html" class="logo">
+      <span class="mark"><svg viewBox="0 0 24 24"><path d="M12 2 4 7v10l8 5 8-5V7l-8-5Zm0 3.3 5 3.1v6.2l-5 3.1-5-3.1V8.4l5-3.1Z"/></svg></span>
+      TripzaCeylon
+    </a>
+    <a href="tripzaceylon.html" class="back">
+      <svg viewBox="0 0 24 24"><path d="M14 6 8 12l6 6 1.4-1.4L10.8 12l4.6-4.6L14 6Z"/></svg> Back to site
+    </a>
+    <button class="btn navbtn" data-plan>
+      Plan Your Trip
+      <svg viewBox="0 0 24 24"><path d="M13 5l7 7-7 7v-5H4v-4h9V5Z"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="wrap intro">
+  <p class="eyebrow">Build Your Own</p>
+  <h1>Draw your route<span class="lite">and we'll cost it</span></h1>
+  <p>Tap the places you want on the map, in the order you'd like to travel. Gold pins are adventure
+  activities. We'll work out the distance, the driving time and how many days it really needs.</p>
+</div>
+
+<div class="wrap layout">
+  <div class="mapbox">
+    <svg viewBox="0 0 6462 11130" role="img" aria-label="Clickable map of Sri Lanka">
+      <path class="dist" data-n="Batticaloa" d="M6131 6633 L6090 6666 L6033 6618 L6041 6410 L6033 6349 L5897 6163 L5859 6057 L5873 5975 L5895 5977 L5954 6094 L5986 6179 L6085 6335 L6133 6577 L6131 6633 Z M4518 5947 L4503 5519 L4586 5396 L4791 5396 L4721 5192 L4723 4652 L4754 4491 L5069 4740 L5041 4935 L4966 4689 L4942 4826 L5006 4928 L5102 4959 L5157 4940 L5254 5145 L5328 5184 L5402 5223 L5402 5337 L5499 5450 L5445 5528 L5535 5688 L5661 5782 L5819 5967 L5765 6040 L5632 5904 L5519 5920 L5565 6001 L5676 5989 L5792 6141 L5804 6224 L5829 6210 L5941 6291 L5974 6496 L5951 6594 L5985 6717 L5703 6880 L5674 6677 L5651 6540 L5402 6596 L5172 6520 L5054 6380 L5085 6216 L4851 6118 L4682 5957 L4518 5947 L4518 5947 Z"/>
+          <path class="dist" data-n="Mannar" d="M762 2293 L856 2385 L731 2335 L684 2327 L812 2473 L837 2517 L771 2509 L698 2439 L647 2407 L534 2306 L421 2255 L267 2219 L262 2166 L298 2154 L421 2154 L532 2183 L650 2228 L762 2293 Z M2025 2559 L2100 2594 L2143 2662 L2185 2769 L2171 2866 L2022 2920 L1866 2939 L1766 2928 L1689 2971 L1648 3064 L1576 3071 L1565 3148 L1631 3198 L1735 3332 L1466 3402 L1330 3402 L1207 3351 L1229 3514 L1223 3772 L1173 3757 L1029 3686 L947 3678 L843 3632 L923 3436 L948 3166 L882 2993 L893 2764 L878 2666 L853 2614 L940 2586 L1101 2442 L1219 2371 L1271 2234 L1290 2137 L1379 1908 L1391 1862 L1506 1854 L1617 1785 L1620 1880 L1637 1971 L1688 2052 L1696 2092 L1683 2174 L1685 2296 L1625 2317 L1579 2439 L1605 2483 L1569 2582 L2025 2559 Z"/>
+          <path class="dist" data-n="Jaffna" d="M302 1094 L233 1098 L168 1076 L140 1041 L140 927 L167 902 L197 955 L315 985 L347 1052 L302 1094 Z M613 777 L666 783 L652 739 L703 760 L706 856 L672 874 L582 855 L564 830 L568 727 L593 727 L613 777 Z M823 557 L888 557 L907 624 L1017 683 L1029 709 L974 729 L888 694 L803 727 L760 696 L718 633 L651 499 L682 452 L707 342 L799 339 L783 432 L788 503 L823 557 Z M2343 949 L2308 843 L2314 825 L2214 774 L1972 576 L1774 347 L1673 293 L1515 255 L1473 225 L1468 183 L1526 158 L1716 140 L1809 177 L1835 268 L1860 306 L2220 730 L2381 830 L2816 1182 L2799 1196 L2784 1206 L2597 1078 L2458 1027 L2390 978 L2348 977 L2343 949 Z M1892 554 L1854 633 L1796 735 L1569 642 L1575 710 L1641 780 L1603 822 L1511 768 L1409 678 L1349 653 L1464 767 L1331 726 L1199 652 L1093 569 L978 518 L945 517 L917 422 L842 308 L902 279 L1011 179 L1060 157 L1275 177 L1428 169 L1450 285 L1562 313 L1588 345 L1673 331 L1704 349 L1892 554 Z"/>
+          <path class="dist" data-n="Kilinochchi" d="M2785 1206 L2766 1266 L2706 1311 L2706 1438 L2643 1404 L2555 1336 L2516 1461 L2470 1487 L2237 1486 L2190 1606 L2117 1612 L1967 1600 L1755 1624 L1683 1717 L1690 1794 L1617 1785 L1506 1854 L1391 1862 L1408 1794 L1409 1593 L1301 1547 L1271 1520 L1249 1458 L1235 1356 L1329 1291 L1478 1249 L1538 1169 L1633 1129 L1575 1038 L1481 958 L1277 838 L1236 787 L1325 790 L1409 824 L1575 920 L1733 960 L1840 1044 L1856 1074 L1823 1091 L1822 1148 L1880 1187 L2017 1154 L2266 1056 L2333 1062 L2480 1103 L2653 1181 L2784 1206 L2785 1206 Z M2348 977 L2272 1007 L2236 980 L2106 972 L1910 802 L1796 735 L1854 633 L1892 554 L2023 697 L2109 751 L2308 843 L2343 949 L2348 977 Z"/>
+          <path class="dist" data-n="Kandy" d="M2646 6730 L2879 6918 L3040 6859 L3048 6714 L3127 6706 L3310 6779 L3512 6708 L3591 6727 L3716 6641 L3829 7070 L3885 7361 L3715 7468 L3481 7462 L3316 7354 L3175 7245 L3153 7524 L2873 7723 L2736 7791 L2573 7829 L2666 7921 L2707 8098 L2566 8113 L2362 7922 L2322 7689 L2449 7645 L2554 7589 L2519 7438 L2491 7307 L2402 7198 L2248 7008 L2379 6882 L2461 6913 L2509 6856 L2619 6826 L2646 6730 L2646 6730 Z"/>
+          <path class="dist" data-n="Matale" d="M3804 6650 L3660 6649 L3558 6686 L3398 6707 L3231 6791 L3086 6690 L3031 6757 L2981 6924 L2703 6808 L2669 6647 L2609 6440 L2667 6290 L2593 6062 L2502 5851 L2462 5737 L2614 5659 L2741 5624 L2832 5506 L2909 5333 L3064 5239 L3237 5256 L3275 5330 L3443 5327 L3326 5609 L3204 5779 L3223 6024 L3245 6117 L3388 6104 L3509 6113 L3676 6025 L3818 6045 L3817 6293 L3804 6650 L3804 6650 Z"/>
+          <path class="dist" data-n="Nuwara Eliya" d="M2362 7922 L2566 8113 L2707 8098 L2666 7921 L2573 7829 L2736 7791 L2873 7723 L3153 7524 L3175 7245 L3316 7354 L3481 7462 L3715 7468 L3734 7636 L3724 7714 L3694 7847 L3594 8041 L3395 8128 L3344 8225 L3245 8269 L3393 8431 L3403 8526 L3322 8579 L3078 8672 L2859 8684 L2563 8631 L2438 8582 L2452 8468 L2458 8330 L2313 8257 L2309 8073 L2351 7972 L2362 7922 Z"/>
+          <path class="dist" data-n="Ampara" d="M5985 6717 L6050 6705 L6099 6779 L6174 6726 L6223 6852 L6282 7742 L6322 7942 L6179 8494 L6120 8727 L6017 8932 L6006 9080 L5738 9330 L5624 9270 L5611 8149 L5544 7940 L5480 7784 L5307 7726 L5270 7494 L5313 7308 L5266 7181 L5197 7008 L5169 6824 L5174 6747 L4986 6795 L4890 6863 L4865 7035 L4740 7063 L4755 7273 L4601 7231 L4535 7074 L4436 7033 L4367 6777 L4419 6588 L4286 6423 L4091 6553 L3911 6477 L3817 6293 L3818 6045 L4026 5980 L4209 6100 L4408 6178 L4514 6075 L4518 5947 L4682 5957 L4851 6118 L5085 6216 L5054 6380 L5172 6520 L5402 6596 L5651 6540 L5674 6677 L5703 6880 L5985 6717 L5985 6717 Z"/>
+          <path class="dist" data-n="Polonnaruwa" d="M4518 5947 L4514 6075 L4408 6178 L4209 6100 L4026 5980 L3676 6025 L3509 6113 L3388 6104 L3245 6117 L3223 6024 L3204 5779 L3326 5609 L3443 5327 L3275 5330 L3237 5256 L3178 5116 L3177 4997 L3200 4791 L3263 4570 L3413 4443 L3571 4422 L3639 4288 L3713 4323 L3812 4431 L3963 4454 L4222 4505 L4430 4739 L4407 4806 L4530 4673 L4630 4508 L4723 4652 L4721 5192 L4791 5396 L4586 5396 L4503 5519 L4518 5947 L4518 5947 Z"/>
+          <path class="dist" data-n="Trincomalee" d="M4708 4507 L4547 4600 L4477 4790 L4383 4794 L4417 4615 L4173 4505 L3846 4466 L3800 4373 L3681 4275 L3717 4006 L3813 3906 L3738 3807 L3626 3607 L3561 3485 L3602 3329 L3528 3040 L3516 2803 L3244 2677 L3178 2661 L3310 2571 L3635 2476 L3669 2543 L3657 2635 L3742 2596 L3889 2621 L4014 2810 L4164 3001 L4263 3064 L4336 3281 L4394 3262 L4489 3414 L4414 3528 L4531 3639 L4471 3718 L4436 3632 L4452 3771 L4337 3749 L4242 3757 L4262 3824 L4438 3910 L4626 3925 L4641 3833 L4807 3812 L4880 3994 L4926 4212 L4854 4114 L4836 4215 L4954 4280 L4754 4491 L4708 4507 Z"/>
+          <path class="dist" data-n="Anuradhapura" d="M3639 4288 L3571 4422 L3413 4443 L3263 4570 L3200 4791 L3177 4997 L3178 5116 L3064 5239 L2909 5333 L2832 5506 L2741 5624 L2614 5659 L2462 5737 L2403 5573 L2333 5358 L2240 5181 L2203 5077 L2101 5047 L1829 4892 L1680 4827 L1366 4677 L1238 4606 L1084 4590 L999 4261 L989 4114 L1052 4048 L1189 3872 L1223 3772 L1207 3351 L1466 3402 L1736 3423 L1847 3534 L2018 3706 L2110 3608 L2270 3348 L2453 3370 L2684 3251 L2883 3030 L2809 2893 L2732 2807 L3018 2744 L3244 2677 L3516 2803 L3528 3040 L3602 3329 L3561 3485 L3626 3607 L3738 3807 L3813 3906 L3717 4006 L3639 4288 Z"/>
+          <path class="dist" data-n="Vavuniya" d="M3201 2621 L3166 2709 L2937 2800 L2737 2868 L2860 2958 L2817 3082 L2541 3369 L2355 3309 L2161 3489 L2061 3630 L1904 3665 L1764 3501 L1735 3332 L1565 3148 L1648 3064 L1766 2928 L2022 2920 L2185 2769 L2100 2594 L2154 2479 L2280 2342 L2202 2165 L2408 2120 L2519 2227 L2688 2127 L2789 2096 L2885 2218 L2991 2283 L3044 2322 L3219 2388 L3201 2621 L3201 2621 Z"/>
+          <path class="dist" data-n="Mullaitivu" d="M3201 2621 L3219 2388 L3044 2322 L2991 2283 L2885 2218 L2789 2096 L2688 2127 L2519 2227 L2408 2120 L2202 2165 L2280 2342 L2154 2479 L1569 2582 L1579 2439 L1685 2296 L1696 2092 L1637 1971 L1617 1785 L1683 1717 L1967 1600 L2190 1606 L2470 1487 L2555 1336 L2706 1438 L2766 1266 L2799 1196 L3142 1446 L3292 1627 L3208 1597 L3135 1616 L3334 1780 L3305 1691 L3391 1780 L3406 2012 L3497 2094 L3562 2122 L3669 2353 L3694 2444 L3504 2330 L3437 2554 L3201 2621 L3201 2621 Z"/>
+          <path class="dist" data-n="Kurunegala" d="M2462 5737 L2502 5851 L2593 6062 L2667 6290 L2609 6440 L2669 6647 L2580 6753 L2549 6834 L2509 6916 L2418 6882 L2355 7000 L2182 6913 L2055 6928 L2019 7097 L1789 7159 L1614 7286 L1497 7172 L1371 7111 L1222 7182 L1079 7131 L914 7236 L807 6524 L837 6256 L982 6099 L966 5996 L1092 5944 L1075 5811 L1187 5639 L1267 5550 L1374 5422 L1448 5394 L1450 5305 L1487 5103 L1434 5000 L1369 4786 L1425 4710 L1788 4862 L1972 4935 L2151 5078 L2245 5111 L2250 5339 L2356 5397 L2392 5670 L2462 5737 Z"/>
+          <path class="dist" data-n="Puttalam" d="M1173 3757 L1138 3978 L1036 4093 L958 4183 L1067 4541 L1188 4569 L1294 4604 L1369 4786 L1434 5000 L1487 5103 L1450 5305 L1448 5394 L1374 5422 L1267 5550 L1187 5639 L1075 5811 L1092 5944 L966 5996 L982 6099 L837 6256 L807 6524 L914 7236 L825 7243 L666 7235 L482 6360 L505 6324 L494 6086 L416 5585 L356 5373 L242 4946 L271 4825 L243 4611 L363 4463 L470 4248 L375 4439 L469 4498 L379 4647 L327 4912 L394 5068 L427 5247 L621 5212 L517 5048 L603 4841 L566 4629 L560 4527 L636 4274 L712 3939 L735 3726 L947 3678 L1173 3757 L1173 3757 Z"/>
+          <path class="dist" data-n="Ratnapura" d="M2452 8468 L2438 8582 L2563 8631 L2859 8684 L3078 8672 L3322 8579 L3371 8663 L3457 8719 L3355 8811 L3414 8928 L3544 8913 L3652 8869 L3577 9009 L3500 9131 L3378 9405 L3407 9666 L3581 9841 L3680 10013 L3692 10133 L3457 10023 L3298 10032 L2935 9928 L2914 9861 L2769 9799 L2747 9676 L2558 9737 L2426 9723 L2294 9682 L2135 9595 L1917 9257 L1944 9194 L1842 9061 L1756 8936 L1627 8747 L1583 8575 L1635 8463 L1593 8320 L1702 8209 L1942 8386 L2044 8452 L2205 8403 L2452 8468 L2452 8468 Z"/>
+          <path class="dist" data-n="Galle" d="M2135 9595 L2294 9682 L2426 9723 L2392 9774 L2430 9904 L2328 9963 L2126 9868 L2208 9955 L2288 10118 L2141 10160 L2138 10350 L2292 10518 L2172 10623 L2235 10710 L2168 10762 L2142 10878 L2020 10859 L1843 10769 L1659 10684 L1587 10663 L1290 10307 L1158 9965 L1107 9773 L1024 9552 L1120 9568 L1257 9659 L1453 9763 L1650 9744 L1902 9875 L1887 9759 L2035 9618 L2135 9595 Z"/>
+          <path class="dist" data-n="Hambantota" d="M5830 9359 L5658 9580 L5374 9747 L4755 10207 L4415 10283 L4358 10343 L3876 10506 L3582 10582 L3469 10668 L3321 10681 L3014 10805 L3003 10721 L2907 10636 L2967 10491 L2939 10442 L2884 10370 L2821 10286 L2807 10132 L2895 10008 L3094 9959 L3351 10041 L3532 10093 L3706 10084 L3629 9957 L3846 9849 L3880 9741 L3966 9676 L4022 9631 L4187 9609 L4256 9677 L4374 9657 L4538 9825 L4765 9718 L5066 9616 L5179 9575 L5202 9491 L5241 9363 L5416 9240 L5541 9169 L5691 9277 L5830 9359 L5830 9359 Z"/>
+          <path class="dist" data-n="Matara" d="M2935 9928 L2913 10052 L2773 10252 L2913 10316 L2893 10417 L3002 10443 L2997 10597 L2914 10680 L2982 10755 L3101 10846 L2897 10895 L2753 10981 L2572 10933 L2365 10943 L2259 10886 L2136 10816 L2218 10744 L2164 10678 L2210 10607 L2156 10405 L2183 10239 L2239 10177 L2267 10038 L2153 9920 L2216 9870 L2414 9983 L2355 9812 L2449 9757 L2578 9692 L2787 9749 L2885 9797 L2950 9887 L2935 9928 Z"/>
+          <path class="dist" data-n="Badulla" d="M3652 8869 L3544 8913 L3414 8928 L3355 8811 L3457 8719 L3371 8663 L3322 8579 L3403 8526 L3393 8431 L3245 8269 L3344 8225 L3395 8128 L3594 8041 L3694 7847 L3724 7714 L3734 7636 L3715 7468 L3885 7361 L3829 7070 L3791 6423 L3867 6326 L3979 6590 L4150 6499 L4409 6449 L4390 6723 L4405 6968 L4477 7074 L4591 7181 L4493 7257 L4472 7367 L4325 7525 L4240 7478 L4199 7583 L4337 7760 L4505 7809 L4504 8063 L4449 8206 L4293 8304 L4230 8451 L4126 8522 L4031 8648 L4018 8734 L4070 8796 L4024 8943 L4091 9085 L4025 9172 L3926 9199 L3858 9194 L3808 9085 L3719 8952 L3652 8869 L3652 8869 Z"/>
+          <path class="dist" data-n="Moneragala" d="M5541 9169 L5416 9240 L5241 9363 L5202 9491 L5179 9575 L5066 9616 L4765 9718 L4538 9825 L4374 9657 L4256 9677 L4187 9609 L4022 9631 L3966 9676 L3880 9741 L3846 9849 L3629 9957 L3477 9778 L3404 9494 L3473 9252 L3527 9070 L3606 8937 L3685 8870 L3763 8968 L3846 9106 L3915 9272 L3965 9138 L4033 9106 L4050 9020 L4029 8860 L4067 8747 L4007 8698 L4032 8530 L4150 8475 L4162 8357 L4385 8202 L4470 8122 L4527 7936 L4439 7733 L4277 7669 L4208 7527 L4286 7483 L4371 7505 L4493 7314 L4601 7231 L4755 7273 L4740 7063 L4865 7035 L4890 6863 L4986 6795 L5174 6747 L5169 6824 L5197 7008 L5266 7181 L5313 7308 L5270 7494 L5307 7726 L5480 7784 L5544 7940 L5611 8149 L5541 9169 Z"/>
+          <path class="dist" data-n="Kegalle" d="M2248 7008 L2282 7093 L2402 7198 L2397 7252 L2491 7307 L2525 7348 L2519 7438 L2591 7518 L2554 7589 L2493 7598 L2449 7645 L2353 7660 L2322 7689 L2384 7824 L2362 7922 L2351 7972 L2276 8034 L2309 8073 L2289 8176 L2313 8257 L2394 8283 L2458 8330 L2484 8440 L2452 8468 L2342 8462 L2205 8403 L2129 8405 L2044 8452 L1975 8437 L1942 8386 L1894 8403 L1702 8209 L1659 8229 L1654 8175 L1691 8141 L1682 8090 L1634 8066 L1574 8062 L1582 8013 L1541 7882 L1555 7801 L1591 7720 L1631 7692 L1652 7645 L1593 7628 L1526 7644 L1492 7574 L1504 7496 L1584 7439 L1591 7344 L1614 7286 L1671 7253 L1789 7159 L1854 7129 L2019 7097 L2048 7038 L2055 6928 L2116 6904 L2182 6913 L2248 7008 Z"/>
+          <path class="dist" data-n="Colombo" d="M1659 8229 L1593 8320 L1567 8391 L1635 8463 L1574 8518 L1493 8499 L1402 8537 L1420 8617 L1366 8603 L1330 8520 L1298 8508 L1221 8570 L1159 8559 L1052 8650 L909 8701 L781 8622 L777 8668 L803 8755 L798 8799 L695 8534 L654 8303 L657 8096 L812 8155 L859 8133 L997 8173 L1092 8160 L1163 8214 L1226 8244 L1335 8247 L1349 8140 L1394 8097 L1448 8071 L1524 8079 L1574 8062 L1634 8066 L1682 8090 L1691 8141 L1654 8175 L1659 8229 Z"/>
+          <path class="dist" data-n="Gampaha" d="M1614 7286 L1591 7344 L1584 7439 L1504 7496 L1492 7574 L1526 7644 L1593 7628 L1652 7645 L1631 7692 L1591 7720 L1555 7801 L1541 7882 L1582 8013 L1574 8062 L1524 8079 L1448 8071 L1394 8097 L1349 8140 L1335 8247 L1226 8244 L1163 8214 L1092 8160 L997 8173 L859 8133 L812 8155 L657 8096 L685 8030 L692 7965 L560 7496 L577 7470 L616 7541 L642 7634 L672 7657 L693 7619 L693 7533 L673 7465 L623 7449 L595 7414 L616 7352 L600 7232 L666 7235 L771 7215 L825 7243 L866 7218 L914 7236 L974 7214 L1079 7131 L1146 7129 L1222 7182 L1303 7159 L1371 7111 L1448 7098 L1497 7172 L1566 7250 L1614 7286 Z"/>
+          <path class="dist" data-n="Kalutara" d="M1574 8518 L1583 8575 L1631 8702 L1627 8747 L1672 8855 L1756 8936 L1773 9017 L1842 9061 L1904 9117 L1944 9194 L1902 9210 L1917 9257 L2034 9421 L2135 9595 L2035 9618 L1887 9700 L1887 9759 L1908 9820 L1902 9875 L1734 9737 L1650 9744 L1574 9786 L1453 9763 L1362 9693 L1257 9659 L1155 9611 L1120 9568 L1074 9592 L1024 9552 L977 9450 L1012 9447 L989 9290 L798 8799 L803 8755 L777 8668 L781 8622 L909 8701 L1052 8650 L1159 8559 L1221 8570 L1298 8508 L1330 8520 L1366 8603 L1420 8617 L1402 8537 L1493 8499 L1574 8518 Z"/>
+      <path id="route" d=""/>
+      <g id="pins"></g>
+    </svg>
+    <div class="legend">
+      <span><i class="k-place"></i> Places</span>
+      <span><i style="background:#d4af37"></i> Adventure</span>
+      <span><i class="k-on"></i> On your route</span>
+    </div>
+  </div>
+
+  <aside class="panel">
+    <h2>Your route</h2>
+    <p class="hint" id="hint">Nothing picked yet — tap a pin to start.</p>
+    <ul id="list"></ul>
+    <div class="empty" id="empty">Your stops will appear here, in order.</div>
+
+    <div class="stats">
+      <div class="stat"><b id="km">0 km</b><span>Road distance</span></div>
+      <div class="stat"><b id="drive">0h</b><span>Time driving</span></div>
+      <div class="stat"><b id="stops">0</b><span>Stops</span></div>
+      <div class="stat"><b id="suggest">—</b><span>Suggested days</span></div>
+    </div>
+
+    <div class="daysrow">
+      <label for="days">Days</label>
+      <input type="range" id="days" min="3" max="28" value="10">
+      <output id="daysOut">10 days</output>
+    </div>
+
+    <div class="warn" id="warn" hidden></div>
+
+    <button class="btn" id="send">
+      Send this route to a trip designer
+      <svg viewBox="0 0 24 24"><path d="M13 5l7 7-7 7v-5H4v-4h9V5Z"/></svg>
+    </button>
+    <button class="btn ghost" id="clear">Clear route</button>
+    <p class="note">Distances are straight-line, multiplied by 1.35 to approximate Sri Lankan roads,
+    and driven at 45 km/h on the flat or 32 km/h between two hill-country stops, where the roads
+    switchback. Treat them as a guide, not a timetable.</p>
+  </aside>
+</div>
+
+
+<div id="plan" aria-hidden="true">
+  <div class="scrim" data-close></div>
+  <div class="panel-drawer" role="dialog" aria-modal="true" aria-label="Plan your trip">
+    <button class="close" data-close aria-label="Close">
+      <svg viewBox="0 0 24 24"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4Z"/></svg>
+    </button>
+    <p class="eyebrow">Step 1 of 1</p>
+    <h3>Plan your trip</h3>
+    <p class="dsub">A few lines is enough. If you've already drawn a route, we'll attach it automatically.</p>
+    <form id="planForm">
+      <label>Your name</label>
+      <input type="text" placeholder="Jane Perera" required>
+      <label>Email</label>
+      <input type="email" placeholder="you@email.com" required>
+      <label>Roughly when?</label>
+      <input type="month">
+      <label>Trip length</label>
+      <select>
+        <option>Under 7 days</option>
+        <option selected>7–10 days</option>
+        <option>11–14 days</option>
+        <option>More than 2 weeks</option>
+      </select>
+      <label>Anything else?</label>
+      <textarea placeholder="Travelling with two kids, want to avoid long drives…"></textarea>
+      <div class="attached" id="attached" hidden></div>
+      <button class="btn" type="submit">Send my enquiry
+        <svg viewBox="0 0 24 24"><path d="M13 5l7 7-7 7v-5H4v-4h9V5Z"/></svg>
+      </button>
+      <p class="note">No deposit, no obligation.</p>
+    </form>
+  </div>
+</div>
+
+<footer>© 2026 TripzaCeylon (Pvt) Ltd — route planner</footer>
+
+<script>
+const STOPS = [
+  ['Jaffna',1357.8,1304.3,80.0074,9.6615,'Northern Province','Palmyra, temples and a cuisine of its own.',2,'place'],
+  ['Trincomalee',4420.8,3629.6,81.2335,8.5874,'East Coast','Natural harbour, Koneswaram temple, whales in season.',2,'place'],
+  ['Sigiriya',3146.6,5346.3,80.7603,7.957,'Cultural Triangle','The rock fortress, best climbed before 7am.',2,'place'],
+  ['Batticaloa',5682.4,6018.4,81.7,7.7102,'East Coast','Lagoons, a Dutch fort and singing fish.',2,'place'],
+  ['Kandy',2804.5,7161.1,80.6337,7.2906,'Central Highlands','The last royal capital and the Temple of the Tooth.',1,'place'],
+  ['Colombo',715.9,8151.0,79.8612,6.9271,'West Coast','Colonial arcades, Galle Face and the best eating.',1,'place'],
+  ['Nuwara Eliya',3224.3,8089.4,80.7891,6.9497,'Tea Country','Cool air at 1,868m and endless tea.',1,'place'],
+  ['Ella',3920.5,8315.4,81.0466,6.8667,'Hill Country','Nine Arch Bridge and Little Adam’s Peak.',2,'place'],
+  ['Arugam Bay',6057.1,8387.1,81.8368,6.8404,'East Coast','A long right-hander and a barefoot village.',3,'place'],
+  ['Yala',4931.9,9668.1,81.42,6.37,'South East','Leopards, elephants and 200+ birds.',1,'place'],
+  ['Galle',1675.2,10529.9,80.217,6.0535,'South Coast','Ramparts, verandahs and stilt fishermen.',2,'place'],
+  ['Skydiving',5636.1,7140.9,81.682,7.298,'Ampara airstrip','Adventure activity — half a day.',0,'adv'],
+  ['Paragliding',3740.6,8524.3,80.98,6.79,'Poonagala, Bandarawela','Adventure activity — half a day.',0,'adv'],
+  ['Zipline',3945.9,8298.3,81.056,6.873,'Flying Ravana, Ella','Adventure activity — half a day.',0,'adv'],
+  ['Paintball',901.8,8224.8,79.93,6.9,'Battaramulla, Colombo','Adventure activity — half a day.',0,'adv'],
+  ['ATV Riding',3126.9,5139.4,80.753,8.033,'Habarana','Adventure activity — half a day.',0,'adv']
+];
+const SVGNS = 'http://www.w3.org/2000/svg';
+const pins   = document.getElementById('pins');
+const list   = document.getElementById('list');
+const empty  = document.getElementById('empty');
+const hint   = document.getElementById('hint');
+const routeEl= document.getElementById('route');
+const kmEl   = document.getElementById('km');
+const driveEl= document.getElementById('drive');
+const stopsEl= document.getElementById('stops');
+const sugEl  = document.getElementById('suggest');
+const days   = document.getElementById('days');
+const daysOut= document.getElementById('daysOut');
+const warn   = document.getElementById('warn');
+const VBW    = 6462;
+
+let picked = [];                                   // indices into STOPS, in travel order
+
+/* great-circle km, then a road factor for Sri Lanka's very indirect roads */
+function haversine(lo1, la1, lo2, la2){
+  const R = 6371, r = Math.PI / 180;
+  const dLa = (la2 - la1) * r, dLo = (lo2 - lo1) * r;
+  const a = Math.sin(dLa/2)**2 + Math.cos(la1*r) * Math.cos(la2*r) * Math.sin(dLo/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+/* Hill-country roads switchback constantly, so a flat multiplier badly under-reads them.
+   Two stops both in the hills get a much higher factor and a slower average speed. */
+const HILL = new Set(['Kandy','Nuwara Eliya','Ella','Paragliding','Zipline']);
+function isHill(i){ return HILL.has(STOPS[i][0]); }
+function factor(a, b){ return (isHill(a) && isHill(b)) ? 2.0 : 1.30; }
+function speed(a, b){ return (isHill(a) && isHill(b)) ? 32 : 45; }
+function legKm(a, b){ return haversine(STOPS[a][3], STOPS[a][4], STOPS[b][3], STOPS[b][4]) * factor(a, b); }
+function legHours(a, b){ return legKm(a, b) / speed(a, b); }
+
+STOPS.forEach(([name, x, y, lo, la, reg, txt, nights, kind], i) => {
+  const g = document.createElementNS(SVGNS, 'g');
+  g.setAttribute('class', 'pin' + (kind === 'adv' ? ' adv' : ''));
+  g.setAttribute('tabindex', '0');
+  g.setAttribute('role', 'button');
+  g.setAttribute('aria-label', name + ' — ' + reg);
+  const left = x > VBW * 0.62;
+  g.innerHTML = `
+    <path class="drop" d="M${x} ${y} c-95 0-172 77-172 172 0 125 172 273 172 273s172-148 172-273c0-95-77-172-172-172Z"
+          transform="translate(0,-445)"/>
+    <circle class="hole" cx="${x}" cy="${y - 273}" r="57"/>
+    <text class="num" x="${x}" y="${y - 273}"></text>
+    <text class="lbl" x="${left ? x - 240 : x + 240}" y="${y - 205}"
+          text-anchor="${left ? 'end' : 'start'}">${name}</text>`;
+  const toggle = () => {
+    const at = picked.indexOf(i);
+    if (at === -1) picked.push(i); else picked.splice(at, 1);
+    render();
+  };
+  g.addEventListener('click', toggle);
+  g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggle(); } });
+  pins.appendChild(g);
+});
+const pinEls = [...pins.children];
+
+function render(){
+  // pins
+  pinEls.forEach((g, i) => {
+    const at = picked.indexOf(i);
+    g.classList.toggle('on', at !== -1);
+    g.querySelector('.num').textContent = at === -1 ? '' : (at + 1);
+    g.querySelector('.hole').style.opacity = at === -1 ? 1 : 0;
+  });
+
+  // route line
+  routeEl.setAttribute('d', picked.length > 1
+    ? 'M' + picked.map(i => `${STOPS[i][1]} ${STOPS[i][2]}`).join(' L')
+    : '');
+
+  // list + totals
+  list.innerHTML = '';
+  let total = 0, hours = 0;
+  picked.forEach((si, k) => {
+    const [name, , , , , reg, , nights, kind] = STOPS[si];
+    const leg = k === 0 ? 0 : legKm(picked[k - 1], si);
+    total += leg;
+    if (k > 0) hours += legHours(picked[k - 1], si);
+    const li = document.createElement('li');
+    if (kind === 'adv') li.className = 'adv';
+    li.innerHTML = `
+      <span class="n">${k + 1}</span>
+      <span><b>${name}</b><small>${reg}</small></span>
+      <span class="leg">${k === 0 ? 'start' : '+' + Math.round(leg) + ' km'}</span>
+      <button aria-label="Remove ${name}">
+        <svg viewBox="0 0 24 24"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4Z"/></svg>
+      </button>`;
+    li.querySelector('button').addEventListener('click', () => {
+      picked.splice(picked.indexOf(si), 1); render();
+    });
+    list.appendChild(li);
+  });
+
+  empty.hidden = picked.length > 0;
+  hint.textContent = picked.length
+    ? 'Tap a pin again to drop it, or keep adding in travel order.'
+    : 'Nothing picked yet — tap a pin to start.';
+
+  kmEl.textContent    = Math.round(total).toLocaleString() + ' km';
+  driveEl.textContent = total ? (hours < 1 ? Math.round(hours * 60) + 'm' : hours.toFixed(1) + 'h') : '0h';
+  stopsEl.textContent = picked.length;
+
+  // a realistic minimum: nights at each place + a day for every ~350km of driving
+  const nights = picked.reduce((a, i) => a + STOPS[i][7], 0);
+  const travelDays = Math.ceil(total / 450);
+  const need = picked.length ? Math.max(3, nights + travelDays) : 0;
+  sugEl.textContent = need ? need + ' days' : '—';
+
+  const chosen = Number(days.value);
+  if (need && chosen < need){
+    warn.hidden = false;
+    warn.textContent = `At ${chosen} days this route means roughly ${(hours / chosen).toFixed(1)} hours in the car every day. We'd suggest ${need} days, or dropping a stop.`;
+  } else warn.hidden = true;
+}
+
+days.addEventListener('input', () => { daysOut.textContent = days.value + ' days'; render(); });
+document.getElementById('clear').addEventListener('click', () => { picked = []; render(); });
+/* ---------- plan drawer, with the drawn route attached ---------- */
+const plan = document.getElementById('plan');
+const attached = document.getElementById('attached');
+function openPlan(){
+  if (picked.length){
+    attached.hidden = false;
+    attached.innerHTML = '<b>Route attached</b>' +
+      picked.map((i, k) => `${k + 1}. ${STOPS[i][0]}`).join(' → ') +
+      `<br>${kmEl.textContent} · ${driveEl.textContent} driving · ${days.value} days`;
+  } else attached.hidden = true;
+  plan.classList.add('open');
+}
+document.querySelectorAll('[data-plan]').forEach(el =>
+  el.addEventListener('click', e => { e.preventDefault(); openPlan(); }));
+document.querySelectorAll('[data-close]').forEach(el =>
+  el.addEventListener('click', () => plan.classList.remove('open')));
+window.addEventListener('keydown', e => { if (e.key === 'Escape') plan.classList.remove('open'); });
+document.getElementById('planForm').addEventListener('submit', e => {
+  e.preventDefault();
+  alert('Thanks — your enquiry is with our trip designers.');
+  plan.classList.remove('open');
+});
+
+/* the route panel's own button opens the same drawer */
+document.getElementById('send').addEventListener('click', openPlan);
+render();
+</script>
+</body>
+</html>
