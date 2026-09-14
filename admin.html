@@ -284,8 +284,8 @@ document.getElementById('tabs').addEventListener('click', e => {
    updated. Both values below are public by design: the anon key can only
    INSERT, and reading requires a signed-in staff account. See
    supabase-setup.sql for the policies that enforce that. */
-const SB_URL = 'PASTE_YOUR_SUPABASE_PROJECT_URL_HERE';   // https://xxxx.supabase.co
-const SB_KEY = 'PASTE_YOUR_SUPABASE_ANON_KEY_HERE';
+const SB_URL = 'https://jusphreloncogmlaehap.supabase.co/rest/v1/';   // https://xxxx.supabase.co
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp1c3BocmVsb25jb2dtbGFlaGFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzOTc5ODksImV4cCI6MjEwNDk3Mzk4OX0.jERZSi4AnJENx2wlbjTVv6RrsxegfMLoVvLCKW9G5r8';
 const sbReady = () => !/^PASTE_/.test(SB_URL) && !/^PASTE_/.test(SB_KEY);
 const api = p => SB_URL.replace(/\/+$/, '') + p;
 
