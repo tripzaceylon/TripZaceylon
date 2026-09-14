@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  TripzaCeylon — route planner
+  ============================================================================
+  Reached from "Build your own route" on the home page.
+  Tap pins in travel order; the panel totals distance, driving time and days.
+
+  HOW THE NUMBERS ARE WORKED OUT
+    straight-line distance between two stops, then multiplied by a road factor
+    because Sri Lankan roads never run straight:
+      1.30 and 45 km/h  normal roads
+      2.00 and 32 km/h  between two hill-country stops (constant switchbacks)
+    checked against nine real road distances — worst error about 19%.
+
+  SUGGESTED DAYS = nights we would give each stop + one day per 450km driven.
+
+  KEY BITS
+    STOPS[]      every pin: name, map x/y, real lon/lat, region, blurb, nights, kind
+    picked[]     indices of STOPS, in the order the user tapped them
+    render()     redraws pins, the route line, the list and the totals
+    contact: TripzaCeylon@gmail.com
+  ============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self' https://api.web3forms.com; img-src 'self' data: https://images.unsplash.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co https://api.web3forms.com; object-src 'none'; upgrade-insecure-requests">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build Your Own Trip — TripzaCeylon</title>
+<meta name="description" content="Build your own Ceylon route: pick the places you want, add adventure activities, and see the total kilometres, driving time and suggested number of days.">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Pacifico&family=Poppins:wght@300;400;500;600;700;800&family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --deep:#1a2c22;--ocean:#2f4b3a;--teal:#4f7457;--aqua:#8aa88b;--leaf:#4f7a4f;
+  --lime:#bfd3ae;--ink:#1e2a22;--muted:#5c6b60;--line:rgba(47,75,58,.16);
+  --blue:#2f6fb5;--grad:linear-gradient(120deg,var(--ocean),var(--teal) 55%,var(--leaf));
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Poppins',sans-serif;color:var(--ink);background:#fcfdfa;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+img{display:block;max-width:100%}
+.wrap{width:min(1280px,94vw);margin:0 auto}
+
+header{background:var(--deep);padding:1rem 0;position:sticky;top:0;z-index:50}
+.nav{display:flex;align-items:center;gap:1.4rem}
+.logo{display:flex;align-items:center;gap:.6rem;font-family:'Pacifico',cursive;font-size:1.3rem;color:#fff;padding-top:.15rem}
+.logo .mark{height:56px;width:auto;flex:0 0 auto;border-radius:0;object-fit:contain;background:none}
+.back{
+  margin-left:auto;display:inline-flex;align-items:center;gap:.5rem;color:rgba(255,255,255,.8);
+  font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;font-weight:500;transition:.3s;
+}
+.back:hover{color:#fff}
+.back svg{width:14px;height:14px;fill:currentColor}
+.btn.navbtn{width:auto;padding:.6rem 1.2rem;font-size:.76rem;margin-left:1.2rem;text-decoration:none}
+@media(max-width:620px){
+  .back{font-size:.62rem}
+  .btn.navbtn{padding:.5rem .8rem;font-size:.64rem;margin-left:.5rem}
+  .back span{display:none}   /* "Back to site" shrinks to its arrow so both buttons fit */
+}
+
+.intro{padding:3rem 0 1.6rem}
+.eyebrow{font-size:.66rem;letter-spacing:.26em;text-transform:uppercase;font-weight:600;color:var(--leaf)}
+h1{
+  font-family:'Poppins',sans-serif;font-weight:800;text-transform:uppercase;
+  font-size:clamp(1.9rem,4.2vw,3rem);line-height:1;letter-spacing:-.025em;margin:.9rem 0 .9rem;
+}
+h1 .lite{display:block;font-weight:300;font-size:.6em;letter-spacing:-.01em;margin-top:.15em}
+.intro p{font-weight:300;font-size:1rem;line-height:1.85;color:rgba(30,42,34,.7);max-width:34rem}
+
+.layout{display:grid;grid-template-columns:1.15fr .85fr;gap:2.6rem;align-items:start;padding-bottom:5rem}
+@media(max-width:980px){.layout{grid-template-columns:1fr;gap:1.8rem}}
+
+/* ---- map ---- */
+.mapbox{position:relative;background:#fff;border:1px solid var(--line);border-radius:18px;padding:1rem}
+.mapbox svg{width:100%;height:min(72vh,660px);display:block;border-radius:12px}
+.dist{fill:#e2ece0;stroke:#fff;stroke-width:14;stroke-linejoin:round;transition:fill .35s ease}
+.mapbox:hover .dist{fill:#dbe8d8}
+.dist.hot{fill:#c6dcc2}
+.roads .rd{fill:none;stroke:#c2d4bd;stroke-width:13;stroke-linecap:round;stroke-linejoin:round;opacity:.9}
+.pin{cursor:pointer}
+.pin .drop{fill:#c8452f;transition:filter .25s}
+.pin.adv .drop{fill:#d4af37;stroke:#a8842a;stroke-width:12}
+.pin .hole{fill:#fff}
+.pin{
+  transition:transform .22s cubic-bezier(.2,.9,.3,1);
+  transform-box:fill-box;transform-origin:50% 100%;
+}
+.pin:hover,.pin:focus-visible{transform:scale(1.18)}
+.pin:hover .drop{filter:drop-shadow(0 8px 12px rgba(0,0,0,.35))}
+.pin.on .drop{fill:#2f6b45;stroke:#1c4a2c;stroke-width:12}
+.pin .lbl{
+  font-family:'Poppins',sans-serif;font-size:150px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.04em;fill:var(--ink);paint-order:stroke;stroke:#fff;stroke-width:34px;
+  stroke-linejoin:round;opacity:0;transition:opacity .25s;pointer-events:none;
+}
+.pin:hover .lbl,.pin.on .lbl{opacity:1}
+.pin .num{
+  font-family:'Poppins',sans-serif;font-size:120px;font-weight:800;fill:#fff;
+  text-anchor:middle;dominant-baseline:central;pointer-events:none;
+}
+#route{fill:none;stroke:#c8452f;stroke-width:26;stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:70 60;opacity:.85}
+.legend{display:flex;gap:1.3rem;justify-content:center;margin-top:.6rem;
+  font-size:.64rem;letter-spacing:.16em;text-transform:uppercase;color:rgba(30,42,34,.45);font-weight:500}
+.legend span{display:inline-flex;align-items:center;gap:.45rem}
+.legend{margin-top:.7rem}
+.legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.k-place{background:#c8452f}.k-adv{background:#d4af37}.k-on{background:#2f6b45}
+
+/* ---- panel ---- */
+.panel{background:#fff;border:1px solid var(--line);border-radius:18px;padding:1.7rem 1.6rem;position:sticky;top:5.4rem}
+@media(max-width:980px){.panel{position:static}}
+.panel h2{font-weight:700;text-transform:uppercase;font-size:.86rem;letter-spacing:.14em}
+.panel .hint{font-weight:300;font-size:.82rem;line-height:1.7;color:rgba(30,42,34,.6);margin:.5rem 0 1.2rem}
+/* appears in the hint line once a route exists — a text link, not another button */
+.panel .hint a.tosend{color:var(--teal);font-weight:600;white-space:nowrap;
+  border-bottom:1px solid rgba(79,116,87,.4);text-decoration:none}
+.panel .hint a.tosend:hover{border-bottom-color:var(--teal)}
+#list{list-style:none;display:flex;flex-direction:column;gap:.5rem;margin-bottom:1.2rem}
+#list li{
+  display:flex;align-items:center;gap:.75rem;padding:.65rem .7rem;border-radius:11px;
+  background:#fafbf9;border:1px solid rgba(30,42,34,.1);
+}
+#list li .n{
+  width:24px;height:24px;border-radius:50%;background:var(--leaf);color:#fff;flex:0 0 auto;
+  display:grid;place-items:center;font-size:.68rem;font-weight:700;
+}
+#list li.adv .n{background:#d4af37;color:#1e2a22}
+#list li b{font-size:.82rem;font-weight:600;display:block}
+#list li small{font-size:.66rem;font-weight:300;color:rgba(30,42,34,.55)}
+#list li .leg{margin-left:auto;font-size:.66rem;font-weight:500;color:var(--teal);white-space:nowrap}
+#list li button{
+  background:none;border:0;cursor:pointer;padding:.2rem;line-height:0;opacity:.35;transition:.25s;flex:0 0 auto;
+}
+#list li button:hover{opacity:1}
+#list li button svg{width:13px;height:13px;fill:#c8452f}
+.empty{font-weight:300;font-size:.84rem;color:rgba(30,42,34,.45);padding:1.4rem 0;text-align:center;
+  border:1px dashed rgba(30,42,34,.18);border-radius:12px;margin-bottom:1.2rem}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-bottom:1.2rem}
+.stat{background:#f4f7f2;border-radius:12px;padding:.9rem 1rem}
+.stat b{display:block;font-size:1.4rem;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.stat span{display:block;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;
+  color:rgba(30,42,34,.5);font-weight:500;margin-top:.25rem}
+.warn{
+  font-size:.74rem;font-weight:300;line-height:1.6;color:#8a4b2f;background:#fdf3ec;
+  border:1px solid #f0d9c8;border-radius:11px;padding:.75rem .9rem;margin-bottom:1.1rem;
+}
+.btn{
+  width:100%;display:inline-flex;align-items:center;justify-content:center;gap:.6rem;border:0;
+  cursor:pointer;padding:.95rem 1.4rem;border-radius:99px;font-family:inherit;font-size:.82rem;
+  font-weight:600;background:var(--grad);color:#fff;transition:.3s;
+}
+.btn:hover{transform:translateY(-2px)}
+.btn svg{width:15px;height:15px;fill:currentColor}
+.btn.ghost{background:none;border:1px solid var(--line);color:var(--ink);margin-top:.6rem}
+.btn.ghost:hover{background:#f4f7f2;transform:none}
+.note{font-size:.68rem;font-weight:300;color:rgba(30,42,34,.45);text-align:center;margin-top:.9rem;line-height:1.6}
+/* the cue under Clear route: fades in and out and drifts down, pointing at the
+   enquiry form further down the same page */
+.moredet{
+  display:flex;flex-direction:column;align-items:center;gap:.15rem;margin-top:1.2rem;
+  text-decoration:none;color:var(--teal);font-size:.66rem;font-weight:600;
+  letter-spacing:.16em;text-transform:uppercase;
+  animation:cueFade 2.6s ease-in-out infinite;
+}
+.moredet:hover{color:var(--ocean)}
+.moredet svg{width:20px;height:20px;fill:currentColor;animation:cueDrop 2.6s ease-in-out infinite}
+@keyframes cueFade{0%,100%{opacity:.4}50%{opacity:1}}
+@keyframes cueDrop{0%,100%{transform:translateY(-2px)}50%{transform:translateY(4px)}}
+@media(prefers-reduced-motion:reduce){.moredet,.moredet svg{animation:none;opacity:.95}}
+
+/* ---- enquiry form, sitting directly under the planner ----
+   Everything is scoped to #enquire so the form's label/input rules can't leak
+   into the planner's own controls (the stop list, the totals). */
+#enquire{border-top:1px solid var(--line);padding:3.4rem 0 4.5rem;scroll-margin-top:5.5rem}
+#enquire .eform{display:grid;grid-template-columns:.9fr 1.1fr;gap:3rem;align-items:start}
+@media(max-width:900px){#enquire .eform{grid-template-columns:1fr;gap:2rem}}
+#enquire .big{font-family:'Poppins',sans-serif;font-weight:800;text-transform:uppercase;
+  font-size:clamp(1.6rem,3.4vw,2.4rem);line-height:1;letter-spacing:-.025em;margin:.8rem 0 .9rem}
+#enquire .big .lite{display:block;font-weight:300;font-size:.6em;margin-top:.15em}
+#enquire .lead{font-weight:300;font-size:.97rem;line-height:1.85;color:rgba(30,42,34,.72);max-width:32rem}
+#enquire .promise{list-style:none;display:grid;gap:.8rem;margin-top:1.8rem}
+#enquire .promise li{font-size:.86rem;font-weight:300;line-height:1.6;color:rgba(30,42,34,.72);
+  padding-left:1.7rem;position:relative}
+#enquire .promise li::before{content:'';position:absolute;left:0;top:.36em;width:11px;height:11px;
+  border-radius:50%;border:2px solid var(--leaf)}
+#enquire .promise b{font-weight:600;color:var(--ink)}
+#enquire form{background:#fff;border:1px solid var(--line);border-radius:18px;padding:1.9rem 1.8rem 2rem}
+#enquire form h3{font-weight:700;text-transform:uppercase;font-size:.8rem;letter-spacing:.16em;color:var(--leaf)}
+#enquire .two{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}
+@media(max-width:520px){#enquire .two{grid-template-columns:1fr}}
+#enquire label{display:block;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);margin:1.1rem 0 .4rem;font-weight:600}
+#enquire input,#enquire select,#enquire textarea{
+  width:100%;border:1px solid var(--line);border-radius:12px;padding:.85rem 1rem;
+  font-family:inherit;font-size:.9rem;color:var(--ink);background:#f8faf5;
+}
+#enquire input:focus,#enquire select:focus,#enquire textarea:focus{outline:0;border-color:var(--teal)}
+#enquire textarea{min-height:110px;resize:vertical}
+#enquire .chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.2rem}
+#enquire .chips input{position:absolute;opacity:0;width:0;height:0}
+#enquire .chips label{margin:0;cursor:pointer;font-size:.72rem;font-weight:400;letter-spacing:.02em;
+  text-transform:none;color:rgba(30,42,34,.7);padding:.55rem .95rem;border-radius:99px;
+  border:1px solid var(--line);background:#fff;transition:.25s}
+#enquire .chips input:checked + label{background:var(--leaf);border-color:var(--leaf);color:#fff}
+/* "Which package?" is a two-way switch rather than one long dropdown:
+   one of ours, or a route of your own. Picking your own turns the read-only
+   "Route attached" summary into a text box you can edit. */
+#enquire .pkmode{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.75rem}
+@media(max-width:520px){#enquire .pkmode{grid-template-columns:1fr}}
+#enquire .pkbtn{
+  padding:.85rem .8rem;border-radius:12px;border:1px solid var(--line);background:#f8faf5;
+  font-family:inherit;font-size:.8rem;font-weight:500;color:rgba(30,42,34,.7);
+  cursor:pointer;transition:.25s;line-height:1.35;
+}
+#enquire .pkbtn:hover{border-color:var(--teal);color:var(--ink)}
+#enquire .pkbtn.on{background:var(--leaf);border-color:var(--leaf);color:#fff;font-weight:600}
+#enquire #own{min-height:120px;font-size:.86rem;line-height:1.7}
+#enquire .ownnote{font-size:.7rem;font-weight:300;line-height:1.6;color:var(--muted);margin-top:.5rem}
+#enquire .ownnote a{color:var(--teal);font-weight:600;text-decoration:underline}
+/* shown only when a festival button filled the dates in for you */
+#enquire .prefill{
+  margin-top:.9rem;padding:.7rem .9rem;border-radius:11px;background:#f4f7f2;
+  border:1px solid rgba(47,75,58,.16);font-size:.76rem;font-weight:400;
+  line-height:1.6;color:rgba(30,42,34,.78);
+}
+#enquire .hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+#enquire .privnote{font-size:.72rem;font-weight:300;line-height:1.6;color:var(--muted);margin-top:.45rem}
+#enquire .consent{display:flex;gap:.6rem;align-items:flex-start;margin-top:1rem}
+#enquire .consent input{width:18px;height:18px;flex:0 0 auto;margin-top:.15rem;accent-color:var(--leaf)}
+#enquire .consent label{margin:0;font-size:.78rem;font-weight:300;line-height:1.6;
+  letter-spacing:0;text-transform:none;color:rgba(30,42,34,.8);cursor:pointer}
+#enquire .consent a{color:var(--teal);font-weight:500}
+#enquire .sendfail{
+  margin-top:.9rem;padding:.75rem .9rem;border-radius:11px;background:#fdf3ec;
+  border:1px solid #f0d9c8;font-size:.8rem;line-height:1.6;color:#8a4b2f;
+}
+#enquire .sendfail a{color:#8a4b2f;font-weight:600;text-decoration:underline}
+#enquire .btn{margin-top:1.8rem}
+#enquire .done{display:none;text-align:center;padding:2rem 0}
+#enquire .done.on{display:block}
+#enquire .done .tick{width:56px;height:56px;border-radius:50%;background:var(--leaf);display:grid;
+  place-items:center;margin:0 auto 1.2rem}
+#enquire .done .tick svg{width:26px;height:26px;fill:#fff}
+#enquire .done h3{font-size:1.3rem;font-weight:800;text-transform:uppercase;letter-spacing:-.02em;color:var(--ink)}
+#enquire .done p{font-size:.9rem;font-weight:300;line-height:1.75;color:rgba(30,42,34,.65);margin-top:.7rem}
+.attached{
+  margin-top:1.3rem;padding:.9rem 1rem;border-radius:12px;background:#f4f7f2;
+  border:1px solid rgba(47,75,58,.14);font-size:.78rem;font-weight:300;line-height:1.7;color:rgba(30,42,34,.75);
+}
+.attached b{display:block;font-size:.62rem;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--leaf);margin-bottom:.4rem}
+/* ============ FLOATING CONTACT BUTTONS ============
+   Fixed to the right edge, above everything except the drawers.
+   Labels slide out on hover; on phones they collapse to icons only. */
+.fab{
+  position:fixed;right:16px;top:50%;transform:translateY(-50%);
+  z-index:1100;display:flex;flex-direction:column;gap:.6rem;
+}
+.fab-btn{
+  display:flex;align-items:center;justify-content:flex-end;gap:0;
+  width:52px;height:52px;border-radius:99px;overflow:hidden;
+  text-decoration:none;color:#fff;box-shadow:0 10px 26px -8px rgba(10,20,14,.5);
+  transition:width .32s cubic-bezier(.2,.85,.25,1),box-shadow .3s,transform .3s;
+  animation:fabIn .6s ease backwards;
+}
+.fab-btn.wa{background:#25d366;animation-delay:.3s}
+.fab-btn.ig{background:linear-gradient(45deg,#f9a03f 0%,#d6266b 48%,#8a3ab9 100%);animation-delay:.6s}
+.fab-btn.fb{background:#1877f2;animation-delay:.75s}
+.fab-btn.em{background:#3d6047;animation-delay:.45s}
+@keyframes fabIn{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
+.fab-btn svg{width:24px;height:24px;fill:currentColor;flex:0 0 auto;margin-right:14px}
+.fab-lab{
+  font-family:'Poppins',sans-serif;font-size:.74rem;font-weight:600;white-space:nowrap;
+  opacity:0;padding-left:16px;transition:opacity .22s ease;
+}
+.fab-btn:hover,.fab-btn:focus-visible{
+  width:168px;box-shadow:0 14px 34px -10px rgba(10,20,14,.6);
+}
+.fab-btn:hover .fab-lab,.fab-btn:focus-visible .fab-lab{opacity:1}
+@media(max-width:700px){
+  .fab{right:12px;top:auto;bottom:14px;transform:none;flex-direction:column-reverse}
+  .fab-btn{width:46px;height:46px}
+  .fab-btn svg{width:21px;height:21px;margin-right:12.5px}
+  .fab-btn:hover,.fab-btn:focus-visible{width:46px}
+  .fab-lab{display:none}
+}
+@media(prefers-reduced-motion:reduce){.fab-btn{animation:none}}
+
+footer{background:#16241c;color:rgba(255,255,255,.5);font-size:.76rem;padding:1.6rem 0;text-align:center}
+.skip{position:absolute;left:-9999px;top:0;z-index:2000;background:#fff;color:#1e2a22;
+  padding:.75rem 1.1rem;border-radius:0 0 10px 0;font-size:.82rem;font-weight:600;text-decoration:none}
+.skip:focus{left:0}
+:focus-visible{outline:3px solid #5f855f;outline-offset:2px}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header>
+  <div class="wrap nav">
+    <a href="index.html" class="logo">
+      <img class="mark" src="logo.png" alt="Tripza Ceylon" width="45" height="56">
+      TripzaCeylon
+    </a>
+    <a href="index.html" class="back">
+      <svg viewBox="0 0 24 24"><path d="M14 6 8 12l6 6 1.4-1.4L10.8 12l4.6-4.6L14 6Z"/></svg> <span>Back to site</span>
+    </a>
+    <!-- one action only: the enquiry form is further down this same page -->
+    <a class="btn navbtn" href="#enquire">
+      Enquire
+      <svg viewBox="0 0 24 24"><path d="M13 5l7 7-7 7v-5H4v-4h9V5Z"/></svg>
+    </a>
+  </div>
+</header>
+
+<main id="main"><div class="wrap intro">
+  <p class="eyebrow">Build Your Own</p>
+  <h1>Draw your route<span class="lite">and we'll cost it</span></h1>
+  <p>Tap the places you want on the map, in the order you'd like to travel. Gold pins are adventure
+  activities. We'll work out the distance, the driving time and how many days it really needs.</p>
+</div>
+
+<div class="wrap layout">
+  <div class="mapbox">
+    <svg viewBox="0 0 6462 11130" role="img" aria-label="Clickable map of Sri Lanka">
+      <defs>
+            <clipPath id="clipLand"><use href="#land"/></clipPath>
+          </defs>
+          <g id="land"><path class="dist" data-n="Batticaloa" d="M6131 6633 L6090 6666 L6033 6618 L6041 6410 L6033 6349 L5897 6163 L5859 6057 L5873 5975 L5895 5977 L5954 6094 L5986 6179 L6085 6335 L6133 6577 L6131 6633 Z M4518 5947 L4503 5519 L4586 5396 L4791 5396 L4721 5192 L4723 4652 L4754 4491 L5069 4740 L5041 4935 L4966 4689 L4942 4826 L5006 4928 L5102 4959 L5157 4940 L5254 5145 L5328 5184 L5402 5223 L5402 5337 L5499 5450 L5445 5528 L5535 5688 L5661 5782 L5819 5967 L5765 6040 L5632 5904 L5519 5920 L5565 6001 L5676 5989 L5792 6141 L5804 6224 L5829 6210 L5941 6291 L5974 6496 L5951 6594 L5985 6717 L5703 6880 L5674 6677 L5651 6540 L5402 6596 L5172 6520 L5054 6380 L5085 6216 L4851 6118 L4682 5957 L4518 5947 L4518 5947 Z"/>
+          <path class="dist" data-n="Mannar" d="M762 2293 L856 2385 L731 2335 L684 2327 L812 2473 L837 2517 L771 2509 L698 2439 L647 2407 L534 2306 L421 2255 L267 2219 L262 2166 L298 2154 L421 2154 L532 2183 L650 2228 L762 2293 Z M2025 2559 L2100 2594 L2143 2662 L2185 2769 L2171 2866 L2022 2920 L1866 2939 L1766 2928 L1689 2971 L1648 3064 L1576 3071 L1565 3148 L1631 3198 L1735 3332 L1466 3402 L1330 3402 L1207 3351 L1229 3514 L1223 3772 L1173 3757 L1029 3686 L947 3678 L843 3632 L923 3436 L948 3166 L882 2993 L893 2764 L878 2666 L853 2614 L940 2586 L1101 2442 L1219 2371 L1271 2234 L1290 2137 L1379 1908 L1391 1862 L1506 1854 L1617 1785 L1620 1880 L1637 1971 L1688 2052 L1696 2092 L1683 2174 L1685 2296 L1625 2317 L1579 2439 L1605 2483 L1569 2582 L2025 2559 Z"/>
+          <path class="dist" data-n="Jaffna" d="M302 1094 L233 1098 L168 1076 L140 1041 L140 927 L167 902 L197 955 L315 985 L347 1052 L302 1094 Z M613 777 L666 783 L652 739 L703 760 L706 856 L672 874 L582 855 L564 830 L568 727 L593 727 L613 777 Z M823 557 L888 557 L907 624 L1017 683 L1029 709 L974 729 L888 694 L803 727 L760 696 L718 633 L651 499 L682 452 L707 342 L799 339 L783 432 L788 503 L823 557 Z M2343 949 L2308 843 L2314 825 L2214 774 L1972 576 L1774 347 L1673 293 L1515 255 L1473 225 L1468 183 L1526 158 L1716 140 L1809 177 L1835 268 L1860 306 L2220 730 L2381 830 L2816 1182 L2799 1196 L2784 1206 L2597 1078 L2458 1027 L2390 978 L2348 977 L2343 949 Z M1892 554 L1854 633 L1796 735 L1569 642 L1575 710 L1641 780 L1603 822 L1511 768 L1409 678 L1349 653 L1464 767 L1331 726 L1199 652 L1093 569 L978 518 L945 517 L917 422 L842 308 L902 279 L1011 179 L1060 157 L1275 177 L1428 169 L1450 285 L1562 313 L1588 345 L1673 331 L1704 349 L1892 554 Z"/>
+          <path class="dist" data-n="Kilinochchi" d="M2785 1206 L2766 1266 L2706 1311 L2706 1438 L2643 1404 L2555 1336 L2516 1461 L2470 1487 L2237 1486 L2190 1606 L2117 1612 L1967 1600 L1755 1624 L1683 1717 L1690 1794 L1617 1785 L1506 1854 L1391 1862 L1408 1794 L1409 1593 L1301 1547 L1271 1520 L1249 1458 L1235 1356 L1329 1291 L1478 1249 L1538 1169 L1633 1129 L1575 1038 L1481 958 L1277 838 L1236 787 L1325 790 L1409 824 L1575 920 L1733 960 L1840 1044 L1856 1074 L1823 1091 L1822 1148 L1880 1187 L2017 1154 L2266 1056 L2333 1062 L2480 1103 L2653 1181 L2784 1206 L2785 1206 Z M2348 977 L2272 1007 L2236 980 L2106 972 L1910 802 L1796 735 L1854 633 L1892 554 L2023 697 L2109 751 L2308 843 L2343 949 L2348 977 Z"/>
+          <path class="dist" data-n="Kandy" d="M2646 6730 L2879 6918 L3040 6859 L3048 6714 L3127 6706 L3310 6779 L3512 6708 L3591 6727 L3716 6641 L3829 7070 L3885 7361 L3715 7468 L3481 7462 L3316 7354 L3175 7245 L3153 7524 L2873 7723 L2736 7791 L2573 7829 L2666 7921 L2707 8098 L2566 8113 L2362 7922 L2322 7689 L2449 7645 L2554 7589 L2519 7438 L2491 7307 L2402 7198 L2248 7008 L2379 6882 L2461 6913 L2509 6856 L2619 6826 L2646 6730 L2646 6730 Z"/>
+          <path class="dist" data-n="Matale" d="M3804 6650 L3660 6649 L3558 6686 L3398 6707 L3231 6791 L3086 6690 L3031 6757 L2981 6924 L2703 6808 L2669 6647 L2609 6440 L2667 6290 L2593 6062 L2502 5851 L2462 5737 L2614 5659 L2741 5624 L2832 5506 L2909 5333 L3064 5239 L3237 5256 L3275 5330 L3443 5327 L3326 5609 L3204 5779 L3223 6024 L3245 6117 L3388 6104 L3509 6113 L3676 6025 L3818 6045 L3817 6293 L3804 6650 L3804 6650 Z"/>
+          <path class="dist" data-n="Nuwara Eliya" d="M2362 7922 L2566 8113 L2707 8098 L2666 7921 L2573 7829 L2736 7791 L2873 7723 L3153 7524 L3175 7245 L3316 7354 L3481 7462 L3715 7468 L3734 7636 L3724 7714 L3694 7847 L3594 8041 L3395 8128 L3344 8225 L3245 8269 L3393 8431 L3403 8526 L3322 8579 L3078 8672 L2859 8684 L2563 8631 L2438 8582 L2452 8468 L2458 8330 L2313 8257 L2309 8073 L2351 7972 L2362 7922 Z"/>
+          <path class="dist" data-n="Ampara" d="M5985 6717 L6050 6705 L6099 6779 L6174 6726 L6223 6852 L6282 7742 L6322 7942 L6179 8494 L6120 8727 L6017 8932 L6006 9080 L5738 9330 L5624 9270 L5611 8149 L5544 7940 L5480 7784 L5307 7726 L5270 7494 L5313 7308 L5266 7181 L5197 7008 L5169 6824 L5174 6747 L4986 6795 L4890 6863 L4865 7035 L4740 7063 L4755 7273 L4601 7231 L4535 7074 L4436 7033 L4367 6777 L4419 6588 L4286 6423 L4091 6553 L3911 6477 L3817 6293 L3818 6045 L4026 5980 L4209 6100 L4408 6178 L4514 6075 L4518 5947 L4682 5957 L4851 6118 L5085 6216 L5054 6380 L5172 6520 L5402 6596 L5651 6540 L5674 6677 L5703 6880 L5985 6717 L5985 6717 Z"/>
+          <path class="dist" data-n="Polonnaruwa" d="M4518 5947 L4514 6075 L4408 6178 L4209 6100 L4026 5980 L3676 6025 L3509 6113 L3388 6104 L3245 6117 L3223 6024 L3204 5779 L3326 5609 L3443 5327 L3275 5330 L3237 5256 L3178 5116 L3177 4997 L3200 4791 L3263 4570 L3413 4443 L3571 4422 L3639 4288 L3713 4323 L3812 4431 L3963 4454 L4222 4505 L4430 4739 L4407 4806 L4530 4673 L4630 4508 L4723 4652 L4721 5192 L4791 5396 L4586 5396 L4503 5519 L4518 5947 L4518 5947 Z"/>
+          <path class="dist" data-n="Trincomalee" d="M4708 4507 L4547 4600 L4477 4790 L4383 4794 L4417 4615 L4173 4505 L3846 4466 L3800 4373 L3681 4275 L3717 4006 L3813 3906 L3738 3807 L3626 3607 L3561 3485 L3602 3329 L3528 3040 L3516 2803 L3244 2677 L3178 2661 L3310 2571 L3635 2476 L3669 2543 L3657 2635 L3742 2596 L3889 2621 L4014 2810 L4164 3001 L4263 3064 L4336 3281 L4394 3262 L4489 3414 L4414 3528 L4531 3639 L4471 3718 L4436 3632 L4452 3771 L4337 3749 L4242 3757 L4262 3824 L4438 3910 L4626 3925 L4641 3833 L4807 3812 L4880 3994 L4926 4212 L4854 4114 L4836 4215 L4954 4280 L4754 4491 L4708 4507 Z"/>
+          <path class="dist" data-n="Anuradhapura" d="M3639 4288 L3571 4422 L3413 4443 L3263 4570 L3200 4791 L3177 4997 L3178 5116 L3064 5239 L2909 5333 L2832 5506 L2741 5624 L2614 5659 L2462 5737 L2403 5573 L2333 5358 L2240 5181 L2203 5077 L2101 5047 L1829 4892 L1680 4827 L1366 4677 L1238 4606 L1084 4590 L999 4261 L989 4114 L1052 4048 L1189 3872 L1223 3772 L1207 3351 L1466 3402 L1736 3423 L1847 3534 L2018 3706 L2110 3608 L2270 3348 L2453 3370 L2684 3251 L2883 3030 L2809 2893 L2732 2807 L3018 2744 L3244 2677 L3516 2803 L3528 3040 L3602 3329 L3561 3485 L3626 3607 L3738 3807 L3813 3906 L3717 4006 L3639 4288 Z"/>
+          <path class="dist" data-n="Vavuniya" d="M3201 2621 L3166 2709 L2937 2800 L2737 2868 L2860 2958 L2817 3082 L2541 3369 L2355 3309 L2161 3489 L2061 3630 L1904 3665 L1764 3501 L1735 3332 L1565 3148 L1648 3064 L1766 2928 L2022 2920 L2185 2769 L2100 2594 L2154 2479 L2280 2342 L2202 2165 L2408 2120 L2519 2227 L2688 2127 L2789 2096 L2885 2218 L2991 2283 L3044 2322 L3219 2388 L3201 2621 L3201 2621 Z"/>
+          <path class="dist" data-n="Mullaitivu" d="M3201 2621 L3219 2388 L3044 2322 L2991 2283 L2885 2218 L2789 2096 L2688 2127 L2519 2227 L2408 2120 L2202 2165 L2280 2342 L2154 2479 L1569 2582 L1579 2439 L1685 2296 L1696 2092 L1637 1971 L1617 1785 L1683 1717 L1967 1600 L2190 1606 L2470 1487 L2555 1336 L2706 1438 L2766 1266 L2799 1196 L3142 1446 L3292 1627 L3208 1597 L3135 1616 L3334 1780 L3305 1691 L3391 1780 L3406 2012 L3497 2094 L3562 2122 L3669 2353 L3694 2444 L3504 2330 L3437 2554 L3201 2621 L3201 2621 Z"/>
+          <path class="dist" data-n="Kurunegala" d="M2462 5737 L2502 5851 L2593 6062 L2667 6290 L2609 6440 L2669 6647 L2580 6753 L2549 6834 L2509 6916 L2418 6882 L2355 7000 L2182 6913 L2055 6928 L2019 7097 L1789 7159 L1614 7286 L1497 7172 L1371 7111 L1222 7182 L1079 7131 L914 7236 L807 6524 L837 6256 L982 6099 L966 5996 L1092 5944 L1075 5811 L1187 5639 L1267 5550 L1374 5422 L1448 5394 L1450 5305 L1487 5103 L1434 5000 L1369 4786 L1425 4710 L1788 4862 L1972 4935 L2151 5078 L2245 5111 L2250 5339 L2356 5397 L2392 5670 L2462 5737 Z"/>
+          <path class="dist" data-n="Puttalam" d="M1173 3757 L1138 3978 L1036 4093 L958 4183 L1067 4541 L1188 4569 L1294 4604 L1369 4786 L1434 5000 L1487 5103 L1450 5305 L1448 5394 L1374 5422 L1267 5550 L1187 5639 L1075 5811 L1092 5944 L966 5996 L982 6099 L837 6256 L807 6524 L914 7236 L825 7243 L666 7235 L482 6360 L505 6324 L494 6086 L416 5585 L356 5373 L242 4946 L271 4825 L243 4611 L363 4463 L470 4248 L375 4439 L469 4498 L379 4647 L327 4912 L394 5068 L427 5247 L621 5212 L517 5048 L603 4841 L566 4629 L560 4527 L636 4274 L712 3939 L735 3726 L947 3678 L1173 3757 L1173 3757 Z"/>
+          <path class="dist" data-n="Ratnapura" d="M2452 8468 L2438 8582 L2563 8631 L2859 8684 L3078 8672 L3322 8579 L3371 8663 L3457 8719 L3355 8811 L3414 8928 L3544 8913 L3652 8869 L3577 9009 L3500 9131 L3378 9405 L3407 9666 L3581 9841 L3680 10013 L3692 10133 L3457 10023 L3298 10032 L2935 9928 L2914 9861 L2769 9799 L2747 9676 L2558 9737 L2426 9723 L2294 9682 L2135 9595 L1917 9257 L1944 9194 L1842 9061 L1756 8936 L1627 8747 L1583 8575 L1635 8463 L1593 8320 L1702 8209 L1942 8386 L2044 8452 L2205 8403 L2452 8468 L2452 8468 Z"/>
+          <path class="dist" data-n="Galle" d="M2135 9595 L2294 9682 L2426 9723 L2392 9774 L2430 9904 L2328 9963 L2126 9868 L2208 9955 L2288 10118 L2141 10160 L2138 10350 L2292 10518 L2172 10623 L2235 10710 L2168 10762 L2142 10878 L2020 10859 L1843 10769 L1659 10684 L1587 10663 L1290 10307 L1158 9965 L1107 9773 L1024 9552 L1120 9568 L1257 9659 L1453 9763 L1650 9744 L1902 9875 L1887 9759 L2035 9618 L2135 9595 Z"/>
+          <path class="dist" data-n="Hambantota" d="M5830 9359 L5658 9580 L5374 9747 L4755 10207 L4415 10283 L4358 10343 L3876 10506 L3582 10582 L3469 10668 L3321 10681 L3014 10805 L3003 10721 L2907 10636 L2967 10491 L2939 10442 L2884 10370 L2821 10286 L2807 10132 L2895 10008 L3094 9959 L3351 10041 L3532 10093 L3706 10084 L3629 9957 L3846 9849 L3880 9741 L3966 9676 L4022 9631 L4187 9609 L4256 9677 L4374 9657 L4538 9825 L4765 9718 L5066 9616 L5179 9575 L5202 9491 L5241 9363 L5416 9240 L5541 9169 L5691 9277 L5830 9359 L5830 9359 Z"/>
+          <path class="dist" data-n="Matara" d="M2935 9928 L2913 10052 L2773 10252 L2913 10316 L2893 10417 L3002 10443 L2997 10597 L2914 10680 L2982 10755 L3101 10846 L2897 10895 L2753 10981 L2572 10933 L2365 10943 L2259 10886 L2136 10816 L2218 10744 L2164 10678 L2210 10607 L2156 10405 L2183 10239 L2239 10177 L2267 10038 L2153 9920 L2216 9870 L2414 9983 L2355 9812 L2449 9757 L2578 9692 L2787 9749 L2885 9797 L2950 9887 L2935 9928 Z"/>
+          <path class="dist" data-n="Badulla" d="M3652 8869 L3544 8913 L3414 8928 L3355 8811 L3457 8719 L3371 8663 L3322 8579 L3403 8526 L3393 8431 L3245 8269 L3344 8225 L3395 8128 L3594 8041 L3694 7847 L3724 7714 L3734 7636 L3715 7468 L3885 7361 L3829 7070 L3791 6423 L3867 6326 L3979 6590 L4150 6499 L4409 6449 L4390 6723 L4405 6968 L4477 7074 L4591 7181 L4493 7257 L4472 7367 L4325 7525 L4240 7478 L4199 7583 L4337 7760 L4505 7809 L4504 8063 L4449 8206 L4293 8304 L4230 8451 L4126 8522 L4031 8648 L4018 8734 L4070 8796 L4024 8943 L4091 9085 L4025 9172 L3926 9199 L3858 9194 L3808 9085 L3719 8952 L3652 8869 L3652 8869 Z"/>
+          <path class="dist" data-n="Moneragala" d="M5541 9169 L5416 9240 L5241 9363 L5202 9491 L5179 9575 L5066 9616 L4765 9718 L4538 9825 L4374 9657 L4256 9677 L4187 9609 L4022 9631 L3966 9676 L3880 9741 L3846 9849 L3629 9957 L3477 9778 L3404 9494 L3473 9252 L3527 9070 L3606 8937 L3685 8870 L3763 8968 L3846 9106 L3915 9272 L3965 9138 L4033 9106 L4050 9020 L4029 8860 L4067 8747 L4007 8698 L4032 8530 L4150 8475 L4162 8357 L4385 8202 L4470 8122 L4527 7936 L4439 7733 L4277 7669 L4208 7527 L4286 7483 L4371 7505 L4493 7314 L4601 7231 L4755 7273 L4740 7063 L4865 7035 L4890 6863 L4986 6795 L5174 6747 L5169 6824 L5197 7008 L5266 7181 L5313 7308 L5270 7494 L5307 7726 L5480 7784 L5544 7940 L5611 8149 L5541 9169 Z"/>
+          <path class="dist" data-n="Kegalle" d="M2248 7008 L2282 7093 L2402 7198 L2397 7252 L2491 7307 L2525 7348 L2519 7438 L2591 7518 L2554 7589 L2493 7598 L2449 7645 L2353 7660 L2322 7689 L2384 7824 L2362 7922 L2351 7972 L2276 8034 L2309 8073 L2289 8176 L2313 8257 L2394 8283 L2458 8330 L2484 8440 L2452 8468 L2342 8462 L2205 8403 L2129 8405 L2044 8452 L1975 8437 L1942 8386 L1894 8403 L1702 8209 L1659 8229 L1654 8175 L1691 8141 L1682 8090 L1634 8066 L1574 8062 L1582 8013 L1541 7882 L1555 7801 L1591 7720 L1631 7692 L1652 7645 L1593 7628 L1526 7644 L1492 7574 L1504 7496 L1584 7439 L1591 7344 L1614 7286 L1671 7253 L1789 7159 L1854 7129 L2019 7097 L2048 7038 L2055 6928 L2116 6904 L2182 6913 L2248 7008 Z"/>
+          <path class="dist" data-n="Colombo" d="M1659 8229 L1593 8320 L1567 8391 L1635 8463 L1574 8518 L1493 8499 L1402 8537 L1420 8617 L1366 8603 L1330 8520 L1298 8508 L1221 8570 L1159 8559 L1052 8650 L909 8701 L781 8622 L777 8668 L803 8755 L798 8799 L695 8534 L654 8303 L657 8096 L812 8155 L859 8133 L997 8173 L1092 8160 L1163 8214 L1226 8244 L1335 8247 L1349 8140 L1394 8097 L1448 8071 L1524 8079 L1574 8062 L1634 8066 L1682 8090 L1691 8141 L1654 8175 L1659 8229 Z"/>
+          <path class="dist" data-n="Gampaha" d="M1614 7286 L1591 7344 L1584 7439 L1504 7496 L1492 7574 L1526 7644 L1593 7628 L1652 7645 L1631 7692 L1591 7720 L1555 7801 L1541 7882 L1582 8013 L1574 8062 L1524 8079 L1448 8071 L1394 8097 L1349 8140 L1335 8247 L1226 8244 L1163 8214 L1092 8160 L997 8173 L859 8133 L812 8155 L657 8096 L685 8030 L692 7965 L560 7496 L577 7470 L616 7541 L642 7634 L672 7657 L693 7619 L693 7533 L673 7465 L623 7449 L595 7414 L616 7352 L600 7232 L666 7235 L771 7215 L825 7243 L866 7218 L914 7236 L974 7214 L1079 7131 L1146 7129 L1222 7182 L1303 7159 L1371 7111 L1448 7098 L1497 7172 L1566 7250 L1614 7286 Z"/>
+          <path class="dist" data-n="Kalutara" d="M1574 8518 L1583 8575 L1631 8702 L1627 8747 L1672 8855 L1756 8936 L1773 9017 L1842 9061 L1904 9117 L1944 9194 L1902 9210 L1917 9257 L2034 9421 L2135 9595 L2035 9618 L1887 9700 L1887 9759 L1908 9820 L1902 9875 L1734 9737 L1650 9744 L1574 9786 L1453 9763 L1362 9693 L1257 9659 L1155 9611 L1120 9568 L1074 9592 L1024 9552 L977 9450 L1012 9447 L989 9290 L798 8799 L803 8755 L777 8668 L781 8622 L909 8701 L1052 8650 L1159 8559 L1221 8570 L1298 8508 L1330 8520 L1366 8603 L1420 8617 L1402 8537 L1493 8499 L1574 8518 Z"/></g>
+          <g clip-path="url(#clipLand)"><g class="roads">
+            <path class="rd" d="M715.4 8151.2 L956.3 7952.4 L1362.3 7571.2 L2038.1 7271.6 L2308.3 7271.6 L2805.3 7160.0"/>
+            <path class="rd" d="M2805.3 7160.0 L2767.7 6672.5 L2851.7 5610.5 L2714.3 5120.3 L2445.6 3785.9 L2446.0 3186.8 L2178.7 1444.0 L1132.5 708.7"/>
+            <path class="rd" d="M2065.7 6618.1 L2851.7 5610.5 L3126.9 5139.4 L3792.4 4248.9 L4419.4 3630.7"/>
+            <path class="rd" d="M3126.9 5139.4 L3793.0 5392.6 L5222.6 5447.1 L5682.4 6019.0"/>
+            <path class="rd" d="M2805.3 7160.0 L2632.3 7516.7 L3224.1 8088.6 L3551.2 8224.8 L3921.6 8314.6 L3956.6 7979.7"/>
+            <path class="rd" d="M715.4 8151.2 L981.5 9068.9 L1089.0 9531.9 L1358.6 10294.4 L1675.2 10528.6 L2576.8 10811.8 L3226.9 10621.2 L4120.4 10348.9"/>
+            <path class="rd" d="M4120.4 10348.9 L4580.3 9913.1 L4065.1 8660.5"/>
+            <path class="rd" d="M715.4 8151.2 L1658.9 8088.6 L2172.0 8823.9 L2577.6 8987.3 L4065.1 8660.5 L4740.8 8306.5 L5281.4 8224.8 L6055.0 8388.1"/>
+            <path class="rd" d="M715.4 8151.2 L660.2 7380.6 L554.3 6373.0 L638.0 5147.5"/>
+            <path class="rd" d="M638.0 5147.5 L2175.7 4385.0 L3792.4 4248.9"/>
+            <path class="rd" d="M4580.3 9913.1 L4931.9 9668.1"/>
+            <path class="rd" d="M638.0 5147.5 L530.0 5202.0 L456.0 4594.7"/>
+            <path class="rd" d="M2805.3 7160.0 L3523.8 6999.3 L3793.9 7053.8"/>
+            </g></g>
+      <path id="route" d=""/>
+      <g id="pins"></g>
+    </svg>
+    <div class="legend">
+      <span><i class="k-place"></i> Places</span>
+      <span><i style="background:#d4af37"></i> Adventure</span>
+      <span><i class="k-on"></i> On your route</span>
+    </div>
+  </div>
+
+  <aside class="panel">
+    <h2>Your route</h2>
+    <p class="hint" id="hint">Nothing picked yet — tap a pin to start.</p>
+    <ul id="list"></ul>
+    <div class="empty" id="empty">Your stops will appear here, in order.</div>
+
+    <div class="stats">
+      <div class="stat"><b id="km">0 km</b><span>Road distance</span></div>
+      <div class="stat"><b id="drive">0h</b><span>Time driving</span></div>
+      <div class="stat"><b id="stops">0</b><span>Stops</span></div>
+      <div class="stat"><b id="suggest">—</b><span>Suggested days</span></div>
+    </div>
+
+    <!-- the days slider used to live here. Trip length is now asked once, in
+         the enquiry form below, and pre-filled from the suggested figure. -->
+    <div class="warn" id="warn" hidden></div>
+
+    <button class="btn ghost" id="clear">Clear route</button>
+
+    <!-- pulsing cue down to the enquiry form on the same page -->
+    <a class="moredet tosend" href="#enquire">
+      <span>Give us more details</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16 6 10l1.4-1.4L12 13.2l4.6-4.6L18 10l-6 6Z"/></svg>
+    </a>
+    <p class="note">Distances are straight-line, multiplied by 1.35 to approximate Sri Lankan roads,
+    and driven at 45 km/h on the flat or 32 km/h between two hill-country stops, where the roads
+    switchback. Treat them as a guide, not a timetable.</p>
+  </aside>
+</div>
+
+
+<!-- ============ ENQUIRY ============
+     Same page as the planner, directly beneath it: draw the route first, then
+     send it. Whatever is on the map above is mirrored into "Route attached"
+     inside the form, so the two halves are one submission, not two.
+     Arriving as build-your-trip.html?p=classic-ceylon pre-picks that package. -->
+<section id="enquire">
+  <div class="wrap eform">
+    <div>
+      <p class="eyebrow">Enquire</p>
+      <h2 class="big">Tell us the trip<span class="lite">you actually want</span></h2>
+      <p class="lead">Draw a route above and it comes down here with you — or leave the map alone and
+      just describe what you're after. A named trip designer reads every enquiry and comes back with a
+      draft route, a rough cost and the reasoning behind each choice.</p>
+      <ul class="promise">
+        <li><b>Within 24 hours</b> — a real reply from a person, not an autoresponder.</li>
+        <li><b>No deposit to see a plan.</b> You only pay once you're happy with the route.</li>
+        <li><b>Nothing hidden.</b> We show you where every dollar goes before you commit.</li>
+        <li><b>Change it late.</b> Itineraries stay editable up to the week you travel.</li>
+      </ul>
+    </div>
+
+    <div>
+      <form id="enq">
+        <h3>Your enquiry</h3>
+        <p class="prefill" id="prefill" hidden></p>
+        <div class="two">
+          <div><label for="nm">Your name</label><input id="nm" type="text" placeholder="Jane Perera" required maxlength="120" autocomplete="name"></div>
+          <div><label for="em">Email</label><input id="em" type="email" placeholder="you@email.com" required maxlength="200" autocomplete="email"></div>
+        </div>
+
+        <label>Which package?</label>
+        <div class="pkmode">
+          <button type="button" class="pkbtn on" data-mode="pack">One of our packages</button>
+          <button type="button" class="pkbtn" data-mode="own">A route of my own</button>
+        </div>
+        <select id="pk" aria-label="Which package?">
+          <option value="">Not sure yet — suggest something</option>
+          <option value="ceylon-essentials">Ceylon Essentials — 5 nights</option>
+          <option value="the-long-weekend">The Long Weekend — 4 nights</option>
+          <option value="adrenaline-ceylon">Adrenaline Ceylon — 8 nights</option>
+          <option value="classic-ceylon">Classic Ceylon — 10 nights</option>
+          <option value="tea-trains-temples">Tea, Trains &amp; Temples — 7 nights</option>
+          <option value="wild-coast-leopards">Wild Coast &amp; Leopards — 8 nights</option>
+          <option value="the-northern-line">The Northern Line — 12 nights</option>
+          <option value="hills-hikes-pekoe-trail">Hills, Hikes &amp; Pekoe Trail — 9 nights</option>
+          <option value="south-coast-slow">South Coast Slow — 6 nights</option>
+          <option value="effortless-ceylon">Effortless Ceylon — 12 nights, all-inclusive</option>
+        </select>
+
+        <!-- read-only summary of the drawn route, shown in "one of ours" mode -->
+        <div class="attached" id="attached" hidden></div>
+
+        <!-- own-route mode: the same stops, but editable, so places we have no
+             pin for can simply be typed in -->
+        <div id="ownWrap" hidden>
+          <label for="own">Places you want, in order</label>
+          <textarea id="own" maxlength="2000" placeholder="1. Colombo&#10;2. Sigiriya&#10;3. Kandy&#10;…or just type the places you have in mind"></textarea>
+          <p class="ownnote" id="ownNote"></p>
+        </div>
+
+        <div class="two">
+          <div><label for="wh">Roughly when?</label><input id="wh" type="month"></div>
+          <div><label for="tv">Travellers</label>
+            <select id="tv"><option>2 people</option><option>1 person</option>
+              <option>3–4 people</option><option>5–6 people</option><option>7 or more</option></select></div>
+        </div>
+
+        <div class="two">
+          <div><label for="ln">Trip length</label>
+            <select id="ln"><option>Under 7 days</option><option selected>7–10 days</option>
+              <option>11–14 days</option><option>More than 2 weeks</option></select></div>
+          <div><label for="bd">Budget per person</label>
+            <select id="bd"><option>Not decided</option><option>Modest</option><option>Mid-range</option><option>Premium</option><option>No limit</option></select></div>
+        </div>
+
+        <label>What matters most?</label>
+        <div class="chips">
+          <input type="checkbox" id="c1"><label for="c1">Wildlife</label>
+          <input type="checkbox" id="c2"><label for="c2">Beaches</label>
+          <input type="checkbox" id="c3"><label for="c3">Culture</label>
+          <input type="checkbox" id="c4"><label for="c4">Hiking</label>
+          <input type="checkbox" id="c5"><label for="c5">Food</label>
+          <input type="checkbox" id="c6"><label for="c6">Adventure</label>
+          <input type="checkbox" id="c7"><label for="c7">Wellness</label>
+          <input type="checkbox" id="c8"><label for="c8">Slow travel</label>
+        </div>
+
+        <label for="ms">Anything else we should know?</label>
+        <textarea id="ms" maxlength="4000" placeholder="Travelling with two kids, want to avoid long drives, one of us doesn't eat chilli…"></textarea>
+        <p class="privnote">Please don't send passport, card, health or medical details here &mdash;
+          we'll ask for anything like that properly and securely if you go on to book.</p>
+
+        <!-- honeypot: hidden from people, ticked by bots. Web3Forms drops any
+             submission where botcheck is true. -->
+        <input type="checkbox" id="botcheck" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+
+        <!-- Consent is unticked by default and the form will not send without it.
+             A pre-ticked box is not consent under any data protection law worth
+             the name, so this one starts empty on purpose. -->
+        <div class="consent">
+          <input type="checkbox" id="agree" required>
+          <label for="agree">I agree that TripzaCeylon may store these details and contact
+            me about this enquiry, as described in the
+            <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</label>
+        </div>
+        <div class="consent">
+          <input type="checkbox" id="optin">
+          <label for="optin">Optional — email me occasional travel ideas and offers. I can
+            unsubscribe at any time.</label>
+        </div>
+
+        <button class="btn" type="submit">Send my enquiry
+          <svg viewBox="0 0 24 24"><path d="M13 5l7 7-7 7v-5H4v-4h9V5Z"/></svg>
+        </button>
+        <p class="sendfail" id="sendFail" hidden></p>
+        <p class="note">No deposit, no obligation. We never pass your details to a third party.<br>Prefer email? <a href="mailto:TripzaCeylon@gmail.com" style="color:var(--teal);font-weight:500">TripzaCeylon@gmail.com</a></p>
+      </form>
+
+      <div class="done" id="done">
+        <div class="tick"><svg viewBox="0 0 24 24"><path d="m9 16.2-3.5-3.5L4 14.2 9 19.2 20 8.2l-1.5-1.5L9 16.2Z"/></svg></div>
+        <h3>Enquiry sent</h3>
+        <p id="doneMsg"></p>
+        <a class="btn ghost" href="index.html">Back to the site</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+<footer>© 2026 TripzaCeylon (Pvt) Ltd — route planner · <a href="mailto:TripzaCeylon@gmail.com" style="color:rgba(255,255,255,.75)">TripzaCeylon@gmail.com</a></footer>
+
+<script>
+/* ==========================================================================
+   SETTINGS — THE ONLY THREE LINES YOU EVER NEED TO EDIT
+   ==========================================================================
+   Replace the text between the quotes. Keep the quotes and the semicolon.
+
+   1. FORM_KEY  — emails you each enquiry.
+      Free from web3forms.com: type your email, they send the key back.
+
+   2. SB_URL and SB_KEY — stores enquiries in your database.
+      Supabase -> Project Settings -> API -> "Project URL" and "anon public".
+      NOT the service_role key. Never that one.
+
+   All three are safe to have in a public file. The form key can only send mail
+   to the address that created it; the anon key can only add an enquiry, never
+   read one.
+
+   Leave any of them as PASTE_... and that part simply stays switched off.
+   ========================================================================== */
+
+const FORM_KEY = 'PASTE_YOUR_WEB3FORMS_ACCESS_KEY_HERE';
+
+const SB_URL   = 'PASTE_YOUR_SUPABASE_PROJECT_URL_HERE';
+const SB_KEY   = 'PASTE_YOUR_SUPABASE_ANON_KEY_HERE';
+
+/* ====================== end of settings ================================== */
+
+const sbReady = () => !/^PASTE_/.test(SB_URL) && !/^PASTE_/.test(SB_KEY);
+
+/* Bot protection, part two. The honeypot catches form-fillers; this catches
+   scripts, which post instantly. No human reads this form and completes it in
+   under three seconds. */
+const FORM_OPENED = Date.now();
+const STOPS = [
+  ['Jaffna',1159.9,704.6,80.0255,9.6615,'Northern Province','Palmyra, temples and a cuisine of its own.',2,'place'],
+  ['Trincomalee',4375.3,3629.6,81.2152,8.5874,'East Coast','Natural harbour, Koneswaram temple, whales in season.',2,'place'],
+  ['Sigiriya',3145.8,5346.3,80.7603,7.957,'Cultural Triangle','The rock fortress, best climbed before 7am.',2,'place'],
+  ['Batticaloa',5665.0,6018.4,81.6924,7.7102,'East Coast','Lagoons, a Dutch fort and singing fish.',2,'place'],
+  ['Kandy',2803.7,7161.1,80.6337,7.2906,'Central Highlands','The last royal capital and the Temple of the Tooth.',1,'place'],
+  ['Colombo',715.9,8151.0,79.8612,6.9271,'West Coast','Colonial arcades, Galle Face and the best eating.',1,'place'],
+  ['Nuwara Eliya',3223.7,8089.4,80.7891,6.9497,'Tea Country','Cool air at 1,868m and endless tea.',1,'place'],
+  ['Ella',3919.6,8315.4,81.0466,6.8667,'Hill Country','Nine Arch Bridge and Little Adam’s Peak.',2,'place'],
+  ['Arugam Bay',6047.5,8387.1,81.8339,6.8404,'East Coast','A long right-hander and a barefoot village.',3,'place'],
+  ['Yala',5155.8,9660.4,81.504,6.3728,'South East','Leopards, elephants and 200+ birds.',1,'place'],
+  ['Galle',1688.3,10529.9,80.221,6.0535,'South Coast','Ramparts, verandahs and stilt fishermen.',2,'place'],
+  ['Skydiving',5617.2,7143.1,81.6747,7.2972,'Ampara airstrip','Adventure activity — half a day.',0,'adv'],
+  ['Paragliding',3685.6,8537.9,80.96,6.785,'Poonagala, Bandarawela','Adventure activity — half a day.',0,'adv'],
+  ['Zipline',3944.8,8326.6,81.0559,6.8626,'Flying Ravana, Ella','Adventure activity — half a day.',0,'adv'],
+  ['Paintball',871.0,8235.4,79.9186,6.8961,'Battaramulla, Colombo','Adventure activity — half a day.',0,'adv'],
+  ['ATV Riding',2982.9,5229.2,80.7,8.0,'Hiriwadunna, Habarana','Adventure activity — half a day.',0,'adv'],
+  ['White-water Rafting',2205.3,7982.1,80.4123,6.9891,'Kitulgala, Kelani River','Grade two and three rapids on the Kelani, through the gorge where Bridge on the River Kwai was shot.',0,'adv'],
+  ['Hot Air Ballooning',2982.9,5547.0,80.7,7.8833,'Dambulla &amp; Kandalama','Lift off at first light over paddy, tanks and the rock fortresses of the cultural triangle.',0,'adv'],
+  ['Whale Watching',2334.2,11002.4,80.46,5.88,'Mirissa','Blue whales and spinner dolphins in the deep water off the southern shelf, December to April.',0,'adv'],
+  ['Scuba Diving',1362.9,10295.8,80.1006,6.1395,'Hikkaduwa reef','Shallow coral gardens, turtles at arm’s length, and a handful of wrecks for the qualified.',0,'adv'],
+  ['Adam\'s Peak Climb',2440.7,8470.9,80.4994,6.8096,'Sri Pada, 2,243m','Five thousand steps through the night to stand on the summit as the peak throws its shadow at dawn.',0,'adv'],
+  ['Mountain Biking',3208.0,6727.0,80.7833,7.45,'Knuckles Range','Singletrack through cloud forest and cardamom, with village tea stops and a support vehicle behind.',0,'adv'],
+  ['Kitesurfing',325.3,5115.7,79.7167,8.0417,'Kappalady, Puttalam lagoon','Flat, waist-deep lagoon water and a season of dependable wind from May to October.',0,'adv'],
+  ['Anuradhapura',2182.1,4381.2,80.4037,8.3114,'Cultural Triangle','The first capital: dagobas, tanks and the sacred bo tree.',2,'place'],
+  ['Polonnaruwa',3844.5,5391.8,81.0188,7.9403,'Cultural Triangle','The second capital, best seen from a bicycle.',2,'place'],
+  ['Dambulla',2844.0,5620.3,80.6486,7.8564,'Cultural Triangle','Five painted caves under one granite overhang.',1,'place'],
+  ['Mannar',832.6,2557.8,79.9044,8.981,'North West','Baobabs, salt flats and the sandbanks towards India.',2,'place'],
+  ['Horton Plains',3251.5,8493.3,80.7994,6.8014,'Tea Country','Cloud forest at 2,100m and an 870m cliff.',1,'place'],
+  ['Udawalawe',3492.6,9382.1,80.8886,6.475,'South','Around 600 resident elephants, seen from open scrub.',1,'place'],
+  ['Kataragama',4694.5,9540.9,81.3333,6.4167,'Deep South','A shrine three religions share, and a nightly puja.',1,'place'],
+  ['Jeep Safari',1226.1,4003.8,80.05,8.45,'Wilpattu National Park','Adventure activity — half a day.',0,'adv'],
+  ['Sea Kayaking',1226.1,9813.2,80.05,6.3167,'Madu Ganga, Balapitiya','Adventure activity — half a day.',0,'adv'],
+  ['Rainforest Trek',2307.2,9586.4,80.45,6.4,'Sinharaja, Kudawa','Adventure activity — half a day.',0,'adv'],
+  ['Surfing',2252.3,10744.3,80.4297,5.9748,'Weligama Bay','Adventure activity — half a day.',0,'adv']
+];
+const SVGNS = 'http://www.w3.org/2000/svg';
+const pins   = document.getElementById('pins');
+const mapSvg = document.querySelector('.mapbox svg');
+const list   = document.getElementById('list');
+const empty  = document.getElementById('empty');
+const hint   = document.getElementById('hint');
+const routeEl= document.getElementById('route');
+const kmEl   = document.getElementById('km');
+const driveEl= document.getElementById('drive');
+const stopsEl= document.getElementById('stops');
+const sugEl  = document.getElementById('suggest');
+const warn   = document.getElementById('warn');
+let   needDays = 0;      // days this route realistically needs, recomputed in render()
+const VBW    = 6462, VBH = 11130;
+
+
+let picked = [];                                   // indices into STOPS, in travel order
+
+/* great-circle km, then a road factor for Sri Lanka's very indirect roads */
+function haversine(lo1, la1, lo2, la2){
+  const R = 6371, r = Math.PI / 180;
+  const dLa = (la2 - la1) * r, dLo = (lo2 - lo1) * r;
+  const a = Math.sin(dLa/2)**2 + Math.cos(la1*r) * Math.cos(la2*r) * Math.sin(dLo/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+/* Hill-country roads switchback constantly, so a flat multiplier badly under-reads them.
+   Two stops both in the hills get a much higher factor and a slower average speed. */
+const HILL = new Set(['Kandy','Nuwara Eliya','Ella','Paragliding','Zipline']);
+function isHill(i){ return HILL.has(STOPS[i][0]); }
+function factor(a, b){ return (isHill(a) && isHill(b)) ? 2.0 : 1.30; }
+function speed(a, b){ return (isHill(a) && isHill(b)) ? 32 : 45; }
+function legKm(a, b){ return haversine(STOPS[a][3], STOPS[a][4], STOPS[b][3], STOPS[b][4]) * factor(a, b); }
+function legHours(a, b){ return legKm(a, b) / speed(a, b); }
+
+STOPS.forEach(([name, x, y, lo, la, reg, txt, nights, kind], i) => {
+  const g = document.createElementNS(SVGNS, 'g');
+  g.setAttribute('class', 'pin' + (kind === 'adv' ? ' adv' : ''));
+  g.setAttribute('tabindex', '0');
+  g.setAttribute('role', 'button');
+  g.setAttribute('aria-label', name + ' — ' + reg);
+  const left = x > VBW * 0.62;
+  g.innerHTML = `
+    <path class="drop" d="M${x} ${y} c-95 0-172 77-172 172 0 125 172 273 172 273s172-148 172-273c0-95-77-172-172-172Z"
+          transform="translate(0,-445)"/>
+    <circle class="hole" cx="${x}" cy="${y - 273}" r="57"/>
+    <text class="num" x="${x}" y="${y - 273}"></text>
+    <text class="lbl" x="${left ? x - 240 : x + 240}" y="${y - 205}"
+          text-anchor="${left ? 'end' : 'start'}">${name}</text>`;
+  const toggle = () => {
+    const at = picked.indexOf(i);
+    if (at === -1) picked.push(i); else picked.splice(at, 1);
+    render();
+  };
+  g.addEventListener('click', toggle);
+  g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggle(); } });
+  pins.appendChild(g);
+});
+const pinEls = [...pins.children];
+
+function render(){
+  // pins
+  pinEls.forEach((g, i) => {
+    const at = picked.indexOf(i);
+    g.classList.toggle('on', at !== -1);
+    g.querySelector('.num').textContent = at === -1 ? '' : (at + 1);
+    g.querySelector('.hole').style.opacity = at === -1 ? 1 : 0;
+  });
+
+  // route line
+  routeEl.setAttribute('d', picked.length > 1
+    ? 'M' + picked.map(i => `${STOPS[i][1]} ${STOPS[i][2]}`).join(' L')
+    : '');
+
+  // list + totals
+  list.innerHTML = '';
+  let total = 0, hours = 0;
+  picked.forEach((si, k) => {
+    const [name, , , , , reg, , nights, kind] = STOPS[si];
+    const leg = k === 0 ? 0 : legKm(picked[k - 1], si);
+    total += leg;
+    if (k > 0) hours += legHours(picked[k - 1], si);
+    const li = document.createElement('li');
+    if (kind === 'adv') li.className = 'adv';
+    li.innerHTML = `
+      <span class="n">${k + 1}</span>
+      <span><b>${name}</b><small>${reg}</small></span>
+      <span class="leg">${k === 0 ? 'start' : '+' + Math.round(leg) + ' km'}</span>
+      <button aria-label="Remove ${name}">
+        <svg viewBox="0 0 24 24"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4Z"/></svg>
+      </button>`;
+    li.querySelector('button').addEventListener('click', () => {
+      picked.splice(picked.indexOf(si), 1); render();
+    });
+    list.appendChild(li);
+  });
+
+  empty.hidden = picked.length > 0;
+  hint.innerHTML = picked.length
+    ? 'Tap a pin again to drop it, or keep adding in travel order. ' +
+      'When you\'re happy, <a class="tosend" href="#enquire">send this route \u2192</a>'
+    : 'Nothing picked yet — tap a pin to start.';
+
+  kmEl.textContent    = Math.round(total).toLocaleString() + ' km';
+  driveEl.textContent = total ? (hours < 1 ? Math.round(hours * 60) + 'm' : hours.toFixed(1) + 'h') : '0h';
+  stopsEl.textContent = picked.length;
+
+  // a realistic minimum: nights at each place + a day for every ~350km of driving
+  const nights = picked.reduce((a, i) => a + STOPS[i][7], 0);
+  const travelDays = Math.ceil(total / 450);
+  const need = picked.length ? Math.max(3, nights + travelDays) : 0;
+  needDays = need;
+  sugEl.textContent = need ? need + ' days' : '—';
+
+  /* flag a route that is simply too much driving, whatever length you give it */
+  if (need && hours / need > 3.5){
+    warn.hidden = false;
+    warn.textContent = `Even over ${need} days that's about ${(hours / need).toFixed(1)} hours in the car daily. Consider dropping a stop.`;
+  } else warn.hidden = true;
+
+  syncRoute();   // mirror the route into the enquiry form below
+}
+
+document.getElementById('clear').addEventListener('click', () => { picked = []; render(); });
+/* ---------- the enquiry form below, kept in step with the map above ----------
+   syncRoute() runs at the end of every render(), so the "Route attached" block
+   inside the form always shows the current stops, distance and day count — no
+   separate "attach" step for the visitor to forget. */
+const attached = document.getElementById('attached');
+const pkSel    = document.getElementById('pk');
+const lnSel    = document.getElementById('ln');
+const ownWrap  = document.getElementById('ownWrap');
+const ownBox   = document.getElementById('own');
+const ownNote  = document.getElementById('ownNote');
+let   lnTouched = false;
+lnSel.addEventListener('change', () => { lnTouched = true; });
+
+/* ----- the two-way switch above the package list -----
+   'pack' shows the dropdown and, if a route is drawn, a read-only summary of it.
+   'own'  hides the dropdown and turns that summary into an editable text box,
+          pre-filled from the map so the visitor can add places we have no pin
+          for, or reorder them by hand. */
+let mode = 'pack', modeTouched = false, ownEdited = false;
+ownBox.addEventListener('input', () => { ownEdited = true; });
+
+const routeText = () => picked.map((i, k) => `${k + 1}. ${STOPS[i][0]}`).join('\n');
+
+function setMode(m){
+  mode = m;
+  document.querySelectorAll('#enquire .pkbtn')
+          .forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+  pkSel.hidden    = m !== 'pack';
+  ownWrap.hidden  = m !== 'own';
+  attached.hidden = !(m === 'pack' && picked.length);
+  if (m === 'own'){
+    if (!ownEdited) ownBox.value = routeText();   // never overwrite what they typed
+    /* once they've typed, the map stops writing here — so offer a way back,
+       otherwise pins added afterwards would be silently dropped */
+    ownNote.innerHTML = !picked.length
+      ? 'Nothing drawn on the map yet, so type the places you have in mind.'
+      : ownEdited
+        ? 'This is yours now, so the map no longer overwrites it. <a href="#" class="refit">Reset from the map</a>.'
+        : 'Taken from the map above. Edit it freely \u2014 add places, reorder, or start over.';
+  }
+}
+document.querySelectorAll('#enquire .pkbtn').forEach(b =>
+  b.addEventListener('click', () => { modeTouched = true; setMode(b.dataset.mode); }));
+
+document.addEventListener('click', e => {
+  if (!e.target.closest || !e.target.closest('a.refit')) return;
+  e.preventDefault();
+  ownEdited = false;
+  setMode('own');
+});
+
+/* map a day count onto the four Trip length options in the form */
+function bandFor(d){
+  return d <= 6  ? 'Under 7 days'
+       : d <= 10 ? '7\u201310 days'
+       : d <= 14 ? '11\u201314 days'
+       : 'More than 2 weeks';
+}
+
+function syncRoute(){
+  if (!attached) return;
+  if (picked.length){
+    attached.innerHTML = '<b>Route attached</b>' +
+      picked.map((i, k) => `${k + 1}. ${STOPS[i][0]}`).join(' → ') +
+      `<br>${kmEl.textContent} · ${driveEl.textContent} driving · ${needDays} days suggested`;
+    /* fill Trip length from the suggestion, unless the visitor set it themselves */
+    if (!lnTouched) lnSel.value = bandFor(needDays);
+    /* drawing a route means "a route of my own" — unless they have already
+       chosen a side themselves, or arrived carrying a package on ?p= */
+    if (!modeTouched){ setMode('own'); return; }
+  } else if (!ownEdited){
+    ownBox.value = '';
+  }
+  setMode(mode);
+}
+
+/* ---------- arriving from a festival button ----------
+   The three "Plan around…" buttons on the home page link here as ?f=perahera,
+   ?f=vesak or ?f=avurudu. Rather than hard-code a year that would go stale, we
+   work out the next time each festival falls and fill in "Roughly when?".
+   Avurudu is fixed (13–14 April); Vesak is the May full moon; the Esala
+   Perahera ends on the Nikini full moon, which lands in late July or August —
+   so the month is right and the exact days go in the message for a human. */
+const FESTIVALS = {
+  perahera: { month: 8, ends: 10, name: 'Esala Perahera',
+              note: 'We would like the trip to take in the Esala Perahera in Kandy (late July or August — please pin the exact nights for us).' },
+  vesak:    { month: 5, ends: 25, name: 'Vesak',
+              note: 'We would like to be in Sri Lanka for Vesak (the May full moon).' },
+  avurudu:  { month: 4, ends: 15, name: 'Avurudu',
+              note: 'We would like to be there for the Sinhala and Tamil New Year on 13–14 April.' }
+};
+const fest = FESTIVALS[new URLSearchParams(location.search).get('f')];
+if (fest){
+  const now = new Date(), m = now.getMonth() + 1;
+  /* roll to next year once this year's festival is over — not merely once the
+     month is over, or someone browsing on 30 August would be offered a
+     Perahera that finished three weeks earlier */
+  const gone = m > fest.month || (m === fest.month && now.getDate() > fest.ends);
+  const year = gone ? now.getFullYear() + 1 : now.getFullYear();
+  const when = `${year}-${String(fest.month).padStart(2, '0')}`;
+  document.getElementById('wh').value = when;
+  const ms = document.getElementById('ms');
+  if (!ms.value.trim()) ms.value = fest.note;
+  const banner = document.getElementById('prefill');
+  banner.textContent = `Dates filled in for ${fest.name} ${year} — change them if you would rather travel at another time.`;
+  banner.hidden = false;
+}
+
+/* a package carried over from the home page arrives as ?p=slug */
+const slug = new URLSearchParams(location.search).get('p');
+if (slug && [...pkSel.options].some(o => o.value === slug)){
+  pkSel.value = slug;
+  modeTouched = true;          // they came for a package; don't switch them off it
+}
+setMode('pack');
+
+/* the "send this route" link inside the hint line walks you down to the form */
+document.addEventListener('click', e => {
+  const go = e.target.closest && e.target.closest('a.tosend');
+  if (!go) return;
+  e.preventDefault();
+  document.getElementById('enquire').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setTimeout(() => { try { document.getElementById('nm').focus({ preventScroll: true }); } catch (_) {} }, 520);
+});
+
+/* ---------- where enquiries go ----------
+   GitHub Pages can only serve files — it cannot run code, so the form is posted
+   to Web3Forms, which emails the enquiry to you. Get your key in about a minute
+   at web3forms.com (enter your email, they send the key back), then paste it
+   over the placeholder below. See GITHUB-SETUP.md.
+   The key is safe to have in this file: it can only ever deliver mail to the
+   address that created it, so a copy is worth nothing to anyone else. */
+/* settings live at the very top of this script — search for SETTINGS */
+
+const enqForm = document.getElementById('enq');
+const sendBtn = enqForm.querySelector('button[type="submit"]');
+
+enqForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  const name = document.getElementById('nm').value.trim().split(' ')[0] || 'there';
+  /* in own-route mode the text box wins: it may have places the map never had */
+  const typed  = ownBox.value.trim().replace(/\s*\n\s*/g, ' → ');
+  const route  = mode === 'own'
+    ? (typed || null)
+    : (picked.length ? picked.map(i => STOPS[i][0]).join(' → ') : null);
+  const chosen = mode === 'pack' && pkSel.value
+    ? pkSel.options[pkSel.selectedIndex].text.split(' — ')[0]
+    : null;
+  const fail = document.getElementById('sendFail');
+  fail.hidden = true;
+
+  const interests = [...document.querySelectorAll('#enquire .chips input:checked')]
+    .map(c => document.querySelector(`label[for="${c.id}"]`).textContent.trim()).join(', ');
+
+  const fields = {
+    access_key: FORM_KEY,
+    subject:   `TripzaCeylon enquiry — ${document.getElementById('nm').value.trim() || 'no name'}`,
+    from_name: 'TripzaCeylon website',
+    Name:       document.getElementById('nm').value.trim(),
+    Email:      document.getElementById('em').value.trim(),
+    Package:    chosen || '—',
+    Route:      route ? (needDays ? `${route}  (${kmEl.textContent}, ~${needDays} days)` : route) : '—',
+    When:       document.getElementById('wh').value || 'Not decided',
+    Travellers: document.getElementById('tv').value,
+    Length:     lnSel.value,
+    Budget:     document.getElementById('bd').value,
+    Interests:  interests || '—',
+    Notes:      document.getElementById('ms').value.trim() || '—',
+    botcheck:   document.getElementById('botcheck').checked   // honeypot
+  };
+
+  /* required= already stops most browsers, but check explicitly so the rule is
+     enforced in code rather than relying on markup alone */
+  /* Validate here as well as in the database. The browser's own required= and
+     type=email can be bypassed by anyone posting straight to the API, so the
+     database constraints are the real defence — but catching it here gives a
+     human a useful message instead of a 400. */
+  const nameEl = document.getElementById('nm'), emailEl = document.getElementById('em');
+  const nameVal = nameEl.value.trim(), emailVal = emailEl.value.trim();
+  const bad = (el, msg) => { fail.textContent = msg; fail.hidden = false; el.focus(); };
+
+  if (nameVal.length < 2 || nameVal.length > 120){
+    return bad(nameEl, 'Please give us a name between 2 and 120 characters.');
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailVal) || emailVal.length > 200){
+    return bad(emailEl, 'That email address does not look right — we need a working one to reply to.');
+  }
+  if (document.getElementById('ms').value.length > 4000){
+    return bad(document.getElementById('ms'), 'Please keep the notes under 4000 characters.');
+  }
+  if (Date.now() - FORM_OPENED < 3000){
+    return bad(nameEl, 'That was quicker than a human — please take a moment and try again.');
+  }
+
+  const agree = document.getElementById('agree');
+  if (!agree.checked){
+    fail.textContent = 'Please tick the box agreeing we may store your details, so we can reply.';
+    fail.hidden = false;
+    agree.focus();
+    return;
+  }
+  fields.Consent = 'Agreed to privacy policy at ' + new Date().toISOString();
+  fields.Marketing = document.getElementById('optin').checked ? 'Opted in' : 'No';
+  sendBtn.disabled = true;
+  const label = sendBtn.textContent;
+  sendBtn.textContent = 'Sending…';
+
+  /* The database is the record. Email is only a notification, so a failed
+     email never loses an enquiry and never blocks the visitor. */
+  let ok = false, emailed = false;
+
+  if (sbReady()) {
+    try {
+      const res = await fetch(SB_URL.replace(/\/+$/, '') + '/rest/v1/enquiries', {
+        method: 'POST',
+        headers: {
+          apikey: SB_KEY,
+          Authorization: 'Bearer ' + SB_KEY,
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal'
+        },
+        body: JSON.stringify({
+          name:        fields.Name,
+          email:       fields.Email,
+          package:     chosen || null,
+          route:       route ? (needDays ? `${route} (${kmEl.textContent}, ~${needDays} days)` : route) : null,
+          travel_when: fields.When,
+          travellers:  fields.Travellers,
+          trip_length: fields.Length,
+          budget:      fields.Budget,
+          interests:   interests || null,
+          notes:       document.getElementById('ms').value.trim() || null,
+          status:      'new',
+          source:      'website',
+          consent_at:  new Date().toISOString(),
+          marketing:   document.getElementById('optin').checked
+        })
+      });
+      ok = res.ok;
+      if (!ok) console.error('Supabase rejected the enquiry:', res.status, await res.text());
+    } catch (err) { console.error('Could not reach Supabase:', err); }
+  }
+
+  if (!/^PASTE_/.test(FORM_KEY)) {
+    try {
+      const res = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(fields)
+      });
+      emailed = (await res.json()).success === true;
+    } catch (_) {}
+  }
+  /* If the database isn't configured yet, a delivered email still counts. */
+  ok = ok || (!sbReady() && emailed);
+
+  sendBtn.disabled = false;
+  sendBtn.textContent = label;
+
+  if (!ok){
+    /* Nothing typed is cleared — the visitor keeps their answers and gets two
+       ways through, so an enquiry is never silently swallowed. */
+    const summary = `Enquiry from ${fields.Name || 'a visitor'}` +
+      (route ? ` — route: ${route}` : chosen ? ` — ${chosen}` : '');
+    fail.innerHTML = 'That did not send. Nothing you typed has been lost — ' +
+      `<a href="https://wa.me/94761674855?text=${encodeURIComponent(summary)}" target="_blank" rel="noopener">send it on WhatsApp</a>` +
+      ' or <a href="mailto:TripzaCeylon@gmail.com">email us</a> instead.';
+    fail.hidden = false;
+    return;
+  }
+
+  document.getElementById('doneMsg').textContent =
+      route  ? `Thanks ${name} — we've got your route: ${route}. A trip designer will reply within 24 hours.`
+    : chosen ? `Thanks ${name} — we've got your enquiry about ${chosen}. A trip designer will reply within 24 hours.`
+             : `Thanks ${name} — a trip designer will read this and reply within 24 hours with a suggested route.`;
+  enqForm.style.display = 'none';
+  document.getElementById('done').classList.add('on');
+  document.getElementById('enquire').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+render();
+/* if we arrived at #enquire, land on the form rather than the top of the map */
+if (location.hash === '#enquire') {
+  document.getElementById('enquire').scrollIntoView({ block: 'start' });
+}
+</script>
+
+<!-- ============ FLOATING CONTACT ============
+     Fixed to the right edge on every page. WhatsApp opens a chat,
+     the second button opens the visitor's mail client. -->
+<div class="fab" role="complementary" aria-label="Contact TripzaCeylon">
+  <a class="fab-btn wa" href="https://wa.me/94761674855" target="_blank" rel="noopener"
+     aria-label="Message us on WhatsApp">
+    <span class="fab-lab">WhatsApp us</span>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.5 14.4c-.3-.2-1.8-.9-2-1s-.5-.2-.7.1-.8 1-.9 1.2-.3.2-.6.1a8.2 8.2 0 0 1-2.4-1.5 9 9 0 0 1-1.7-2.1c-.2-.3 0-.5.1-.6l.5-.6.3-.5v-.5l-1-2.3c-.2-.6-.5-.5-.7-.5h-.6a1.1 1.1 0 0 0-.8.4A3.3 3.3 0 0 0 6 9c0 1.5 1 2.9 1.2 3.1a11.9 11.9 0 0 0 4.6 4.1 15.5 15.5 0 0 0 1.5.6 3.7 3.7 0 0 0 1.7.1 2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.2-.2-.5-.3ZM12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.4A10 10 0 1 0 12 2Zm0 18.3a8.3 8.3 0 0 1-4.2-1.2l-.3-.2-3.1.8.8-3-.2-.3A8.3 8.3 0 1 1 12 20.3Z"/></svg>
+  </a>
+  <a class="fab-btn ig" href="https://instagram.com/tripzaceylon" target="_blank" rel="noopener"
+     aria-label="Follow us on Instagram">
+    <span class="fab-lab">Instagram</span>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2c2.7 0 3 0 4.1.1 1 0 1.7.2 2.3.5.6.2 1.1.5 1.6 1 .5.5.8 1 1 1.6.3.6.4 1.3.5 2.3 0 1 .1 1.4.1 4.1s0 3-.1 4.1c0 1-.2 1.7-.5 2.3-.2.6-.5 1.1-1 1.6-.5.5-1 .8-1.6 1-.6.3-1.3.4-2.3.5-1 0-1.4.1-4.1.1s-3 0-4.1-.1c-1 0-1.7-.2-2.3-.5-.6-.2-1.1-.5-1.6-1-.5-.5-.8-1-1-1.6-.3-.6-.4-1.3-.5-2.3C2 15 2 14.7 2 12s0-3 .1-4.1c0-1 .2-1.7.5-2.3.2-.6.5-1.1 1-1.6.5-.5 1-.8 1.6-1 .6-.3 1.3-.4 2.3-.5C8.5 2 8.8 2 12 2Zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 8.2a3.2 3.2 0 1 1 0-6.4 3.2 3.2 0 0 1 0 6.4ZM17.8 6.9a1.2 1.2 0 1 1-2.4 0 1.2 1.2 0 0 1 2.4 0Z"/></svg>
+  </a>
+  <a class="fab-btn fb" href="https://facebook.com/tripzaceylon" target="_blank" rel="noopener"
+     aria-label="Find us on Facebook">
+    <span class="fab-lab">Facebook</span>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 21v-7h2.4l.4-3h-2.8V9.2c0-.9.2-1.4 1.5-1.4h1.4V5.1c-.3 0-1.2-.1-2.2-.1-2.2 0-3.7 1.3-3.7 3.8V11H8v3h2.5v7h3Z"/></svg>
+  </a>
+  <a class="fab-btn em" href="mailto:TripzaCeylon@gmail.com" aria-label="Email us">
+    <span class="fab-lab">Email us</span>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Zm0 4-8 5-8-5V6l8 5 8-5v2Z"/></svg>
+  </a>
+</div>
+
+</body>
+</html>
